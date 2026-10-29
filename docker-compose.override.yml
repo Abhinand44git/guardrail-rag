@@ -1,0 +1,24 @@
+# Local-dev-only overlay. Docker Compose merges this automatically on top of
+# docker-compose.yml when both are present in the same directory — no flag needed.
+#
+# Purpose: install requirements-dev.txt (pytest, httpx, etc.) into the running
+# `api` container so `docker compose exec api pytest` works against the exact
+# same image that would be deployed, without baking test tooling into the
+# production Dockerfile/image itself.
+#
+# Why not just add requirements-dev.txt to the Dockerfile: that would ship
+# pytest/httpx inside the image that actually gets deployed to Railway/Render,
+# bloating the production artifact with tooling nothing at runtime needs.
+# Deployment (docker-compose.yml alone, or the platform's own build config)
+# never sees this file, so the deployed image is unaffected either way.
+#
+# Trade-off accepted: pip install re-runs on every `api` container start.
+# Harmless (pip no-ops instantly once installed, as seen the first time this
+# ran), and simpler than a multi-stage Dockerfile for a project this size —
+# revisit only if container startup time becomes an actual pain point.
+
+services:
+  api:
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements-dev.txt &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"

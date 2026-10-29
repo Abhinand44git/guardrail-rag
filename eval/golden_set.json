@@ -1,0 +1,355 @@
+{
+  "_about": "A retrieval hit = any top-k chunk whose text contains ANY anchor (case-insensitive, whitespace-collapsed). Anchors are text, not chunk ids, so the set survives chunk-size changes. answerable=false means the corpus has no answer; those are scored separately. parts=true means the anchors are different pieces of ONE answer (not alternatives); the harness then also reports how many of those pieces were found in the top-k. | v2: P1,P3,P4,P5,P8 rewritten by the project owner (assistant's originals kept in 'original_question_assistant_written' and in golden_set_v1.json); U4-U7 and Y8-Y12 written by the owner; 'author':'owner' marks them.",
+  "questions": [
+    {
+      "id": "P1",
+      "category": "paraphrase",
+      "answerable": true,
+      "question": "can administrator remove or demote their own account through user management endpoint?",
+      "anchors": [
+        "could deactivate or demote themselves",
+        "lock the tenant out of Admin access entirely"
+      ],
+      "original_question_assistant_written": "Why can't an administrator remove or downgrade their own account through the user-management endpoint?",
+      "author": "owner"
+    },
+    {
+      "id": "P2",
+      "category": "paraphrase",
+      "answerable": true,
+      "question": "When an employee leaves, why isn't their row simply erased from the database?",
+      "anchors": [
+        "resolve to a real user row",
+        "keep resolving to a real row"
+      ]
+    },
+    {
+      "id": "P3",
+      "category": "paraphrase",
+      "answerable": true,
+      "question": "why does the project have no ai vendor instead uses client keys",
+      "anchors": [
+        "was never meant to provide an AI model at all",
+        "none owned by GuardRail. Every tenant must configure a provider"
+      ],
+      "original_question_assistant_written": "Why did the project stop planning to ship a default AI vendor?",
+      "author": "owner"
+    },
+    {
+      "id": "P4",
+      "category": "paraphrase",
+      "answerable": true,
+      "question": "if operator reduces the no of allowed admins of company, what happens to the admins already assigned by the company?",
+      "anchors": [
+        "doesn't remove/demote anyone",
+        "grandfathers existing Admins"
+      ],
+      "original_question_assistant_written": "If the operator reduces the allowed number of admins below the current count, what happens to the admins already there?",
+      "author": "owner"
+    },
+    {
+      "id": "P5",
+      "category": "paraphrase",
+      "answerable": true,
+      "question": "is a switched off company blocked immediately instead of that company's user login tokens?",
+      "anchors": [
+        "deactivation only takes effect once a user's token naturally expires",
+        "immediately rather than waiting for token expiry"
+      ],
+      "original_question_assistant_written": "Why is a switched-off company blocked immediately instead of when people's login tokens run out?",
+      "author": "owner"
+    },
+    {
+      "id": "P6",
+      "category": "paraphrase",
+      "answerable": true,
+      "question": "What was the privacy argument against calling a hosted service to turn text into vectors?",
+      "anchors": [
+        "every ingested chunk"
+      ]
+    },
+    {
+      "id": "P7",
+      "category": "paraphrase",
+      "answerable": true,
+      "question": "What clearance level does a freshly uploaded file start with, and what is the reasoning?",
+      "anchors": [
+        "Fail closed, not open"
+      ]
+    },
+    {
+      "id": "P8",
+      "category": "paraphrase",
+      "answerable": true,
+      "question": "can a developer who uploaded a file be able to delete this",
+      "anchors": [
+        "acquiring the power to also delete or reclassify it",
+        "Deliberately not extended to Developers, even for documents they ingest"
+      ],
+      "original_question_assistant_written": "Why shouldn't a developer who uploaded a file be able to delete it?",
+      "author": "owner"
+    },
+    {
+      "id": "P9",
+      "category": "paraphrase",
+      "answerable": true,
+      "question": "How do I make sure someone who quit can't keep using the system?",
+      "anchors": [
+        "would do nothing until their existing JWT expired",
+        "soft deactivation"
+      ]
+    },
+    {
+      "id": "P10",
+      "category": "paraphrase",
+      "answerable": true,
+      "question": "Why does local development run one server process while production runs two?",
+      "anchors": [
+        "support multiple workers"
+      ]
+    },
+    {
+      "id": "I1",
+      "category": "identifier",
+      "answerable": true,
+      "question": "What does check_admin_cap_or_raise do?",
+      "anchors": [
+        "def check_admin_cap_or_raise"
+      ]
+    },
+    {
+      "id": "I2",
+      "category": "identifier",
+      "answerable": true,
+      "question": "visible_document_vectors_query",
+      "anchors": [
+        "def visible_document_vectors_query"
+      ]
+    },
+    {
+      "id": "I3",
+      "category": "identifier",
+      "answerable": true,
+      "question": "Where is enforce_max_admins changed so deactivated admins stop counting?",
+      "anchors": [
+        "a deactivated Admin no longer counts against"
+      ]
+    },
+    {
+      "id": "I4",
+      "category": "identifier",
+      "answerable": true,
+      "question": "What is the default value of ingest_max_file_size_mb?",
+      "anchors": [
+        "ingest_max_file_size_mb: int = 20"
+      ]
+    },
+    {
+      "id": "C1",
+      "category": "code",
+      "answerable": true,
+      "question": "How does the code avoid cutting a line of source code in half when splitting it into pieces?",
+      "anchors": [
+        "def _chunk_by_lines"
+      ]
+    },
+    {
+      "id": "C2",
+      "category": "code",
+      "answerable": true,
+      "question": "How are a user's question and a stored document treated differently before being turned into numbers?",
+      "anchors": [
+        "QUERY_PREFIX = \"search_query: \""
+      ]
+    },
+    {
+      "id": "C3",
+      "category": "code",
+      "answerable": true,
+      "question": "How is a logout request kept from failing when the token was already revoked?",
+      "anchors": [
+        "def require_user_plane_logout",
+        "async def blacklist_token"
+      ]
+    },
+    {
+      "id": "C4",
+      "category": "code",
+      "answerable": true,
+      "question": "Which roles are allowed to upload documents?",
+      "anchors": [
+        "| 2 | Developer | 2, 3 | Yes, own tenant"
+      ]
+    },
+    {
+      "id": "Y1",
+      "category": "broad",
+      "answerable": true,
+      "question": "how is the auth handled in the app?",
+      "anchors": [
+        "def decode_token",
+        "async def require_user(",
+        "async def user_login"
+      ],
+      "parts": true
+    },
+    {
+      "id": "Y2",
+      "category": "broad",
+      "answerable": true,
+      "question": "what are the rules that are set in the database or triggers?",
+      "anchors": [
+        "CREATE TRIGGER trg_enforce_max_admins",
+        "ck_users_role_fixed",
+        "uq_users_tenant_username"
+      ],
+      "parts": true
+    },
+    {
+      "id": "Y3",
+      "category": "broad",
+      "answerable": true,
+      "question": "can a operator be able to access the user code via the account he generated for the client?",
+      "anchors": [
+        "Cannot: query, ingest, or read any document",
+        "Password is **never** in the API response"
+      ],
+      "parts": true
+    },
+    {
+      "id": "Y4",
+      "category": "broad",
+      "answerable": true,
+      "question": "how does it handle security matters betwwen different users belonging to different companies?",
+      "anchors": [
+        "Strict tenant isolation",
+        "def visible_document_vectors_query"
+      ],
+      "parts": true
+    },
+    {
+      "id": "Y5",
+      "category": "code",
+      "answerable": true,
+      "question": "how does the api for login work for users?",
+      "anchors": [
+        "async def user_login",
+        "issues tenant-scoped JWT"
+      ]
+    },
+    {
+      "id": "U1",
+      "category": "unanswerable",
+      "answerable": false,
+      "question": "Which Kubernetes cluster does GuardRail deploy to?",
+      "anchors": []
+    },
+    {
+      "id": "U2",
+      "category": "unanswerable",
+      "answerable": false,
+      "question": "How much does a GuardRail subscription cost per month?",
+      "anchors": []
+    },
+    {
+      "id": "U3",
+      "category": "unanswerable",
+      "answerable": false,
+      "question": "how fast does a request take from embedding to get the chunks after user hits the query",
+      "anchors": [],
+      "note": "Written by the project owner. Hard negative: the corpus discusses latency (Analysis NFR section, Decision Log) but only for generation, with no retrieval timing, so a lexically/semantically close chunk exists that does NOT answer it."
+    },
+    {
+      "id": "U4",
+      "category": "unanswerable",
+      "answerable": false,
+      "author": "owner",
+      "question": "is this project actually worth registering for a hackathon?",
+      "note": "An opinion; nothing in the corpus addresses it."
+    },
+    {
+      "id": "U5",
+      "category": "unanswerable",
+      "answerable": false,
+      "author": "owner",
+      "question": "can trainee see developer or admin chats of the same company?",
+      "note": "Hard negative. The corpus has a query_log table and a planned GET /query/history, but states no rule about who may see whose history."
+    },
+    {
+      "id": "Y8",
+      "category": "broad",
+      "answerable": true,
+      "author": "owner",
+      "parts": true,
+      "question": "what endpoints exist of project memeory adn sdlc phases",
+      "anchors": [
+        "Schema-only this phase (migration 0009)",
+        "('planning','analysis','design','development','testing','deployment')"
+      ]
+    },
+    {
+      "id": "Y9",
+      "category": "code",
+      "answerable": true,
+      "author": "owner",
+      "question": "what is significance of 1566 in embeddings?",
+      "note": "Typed 1566; the real figure in the code is 1536. Kept as typed because a typo is realistic. BM25 cannot match the number itself, but still ranks the right chunk first on the other words, so this tests the typo mostly for the embedding model.",
+      "anchors": [
+        "zero-padded out to 1536 before storage",
+        "for model-change-resilience"
+      ]
+    },
+    {
+      "id": "Y10",
+      "category": "code",
+      "answerable": true,
+      "author": "owner",
+      "parts": true,
+      "question": "how is chucking done, owrd wise or functionality wise",
+      "anchors": [
+        "approximate whitespace-delimited word count",
+        "chunked along line boundaries so a chunk never splits a line in half",
+        "Same fixed-size *strategy* is applied uniformly"
+      ]
+    },
+    {
+      "id": "Y11",
+      "category": "code",
+      "answerable": true,
+      "author": "owner",
+      "parts": true,
+      "question": "what happens when a corrupted or bad pdf is uploaded for chunking",
+      "anchors": [
+        "This file could not be read as a PDF.",
+        "No extractable text content was found to ingest."
+      ]
+    },
+    {
+      "id": "Y12",
+      "category": "code",
+      "answerable": true,
+      "author": "owner",
+      "question": "when app is running does database start first",
+      "anchors": [
+        "depends_on: db: condition: service_healthy",
+        "Once containers are healthy"
+      ]
+    },
+    {
+      "id": "U6",
+      "category": "unanswerable",
+      "answerable": false,
+      "author": "owner",
+      "question": "how much of frontend part has been completed ?",
+      "note": "Judgment call. The corpus lists 'admin dashboard endpoints' as in scope and a mobile/desktop client as out of scope, but never mentions a web frontend or its progress."
+    },
+    {
+      "id": "U7",
+      "category": "unanswerable",
+      "answerable": false,
+      "author": "owner",
+      "question": "can the developers,admin or trainee chats be deleted?",
+      "note": "Hard negative, same gap as U5: query_log exists, but nothing says whether or how history can be deleted."
+    }
+  ]
+}

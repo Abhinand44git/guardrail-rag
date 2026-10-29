@@ -1,0 +1,39 @@
+# Keep secrets, local environments and dev-only tooling OUT of the image.
+# .gitignore only affects Git; Docker never reads it, so this file is what
+# stops `COPY . .` in the Dockerfile from copying them in.
+
+# --- secrets (supplied at RUN time via compose env_file / the host's env vars) ---
+.env
+.env.*
+!.env.example
+
+# --- version control / editors ---
+.git
+.gitignore
+.vscode
+.idea
+
+# --- local virtual environments (can be hundreds of MB) ---
+venv
+.venv
+.venv-*
+
+# --- caches and build output ---
+__pycache__
+*.pyc
+.pytest_cache
+*.egg-info
+dist
+build
+
+# --- dev tooling that does not belong in the runtime image ---
+eval
+docker-compose*.yml
+Dockerfile
+embedder/Dockerfile
+.dockerignore
+
+# NOT excluded on purpose: embedder/ (its code is tiny and has no heavy imports; the API's tests
+# import embedder.main to run the real HTTP layer against a fake model), tests/, pytest.ini, requirements-dev.txt, alembic.ini,
+# README.md and scripts/ -- `docker compose exec api pytest` and
+# `python -m scripts.smoke_real_model` run inside this image and need them.

@@ -1,0 +1,21 @@
+# The embedder image's own dependencies. The API image no longer contains torch at all
+# (ADR-0012): everything heavy lives here, in the one container that needs it.
+#
+# These are the exact pins verified together on the project owner's machine (see ADR-0006
+# and eval/results/*.json): Python 3.12, torch 2.4.1+cpu, transformers 4.44.2,
+# sentence-transformers 3.1.1, einops 0.8.0. transformers is held below 5 because
+# nomic-embed-text-v1.5's remote code breaks on 5.x (get_extended_attention_mask).
+#
+# --extra-index-url pulls the CPU-only torch wheel instead of PyPI's default, which bundles
+# several GB of CUDA libraries this project never uses. NOT yet verified inside this image:
+# build it and run the checklist in docs/adr/0012-*.md.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.1+cpu
+sentence-transformers==3.1.1
+transformers==4.44.2
+einops==0.8.0
+
+# HTTP layer: same pins as the API's requirements.txt.
+fastapi==0.115.0
+uvicorn==0.30.6
+pydantic==2.9.2

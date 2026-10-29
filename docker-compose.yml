@@ -1,0 +1,97 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: guardrail-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-guardrail}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-guardrail}
+      POSTGRES_DB: ${POSTGRES_DB:-guardrail_rag}
+    ports:
+      # Localhost only. A bare "5432:5432" publishes the database on every network interface of
+      # the host (anyone on the same Wi-Fi/LAN can reach it, and the default password is
+      # `guardrail`). The api container reaches it as db:5432 over the compose network and does
+      # not use this mapping at all; this one is only for your own psql/GUI tools. If another PostgreSQL on your machine already
+      # owns 5432 (Windows reports "forbidden by its access permissions"), set DB_HOST_PORT=5433 in .env.
+      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-guardrail} -d ${POSTGRES_DB:-guardrail_rag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # The embedding model lives here, not in the API (ADR-0012). Weights and the model's remote
+  # code are baked into the image at BUILD time (needs internet on the build machine, once);
+  # the running container never contacts Hugging Face. It is on `embed_net` only, which is
+  # `internal: true` -- no route to the internet, no published port, reachable by `api` alone.
+  embedder:
+    build:
+      context: .
+      dockerfile: embedder/Dockerfile
+      args:
+        # The same variable the API reads, so the two cannot be configured apart by accident.
+        MODEL_NAME: ${EMBEDDING_MODEL_NAME:-nomic-ai/nomic-embed-text-v1.5}
+        # The pinned commits in embedder/revisions.lock were verified to match the built image
+        # (2026-10-18), so any later difference now fails the build instead of printing a warning.
+        # If you deliberately change the model or its commits, update revisions.lock to match.
+        REVISION_LOCK_MODE: strict
+    container_name: guardrail-embedder
+    restart: unless-stopped
+    # A cap, not a reservation. Docker Desktop (WSL2) must itself have this much memory available.
+    mem_limit: ${EMBEDDER_MEM_LIMIT:-3g}
+    networks:
+      - embed_net
+    healthcheck:
+      # Healthy only once the model is loaded (the service refuses /health until then).
+      # python, not curl: the slim image has no curl.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 120s
+
+  api:
+    build: .
+    container_name: guardrail-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      embedder:
+        condition: service_healthy
+    environment:
+      # Overrides any EMBEDDER_URL in .env: inside compose the service name is the address.
+      EMBEDDER_URL: http://embedder:8000
+    # `default` (db, and published port 8000) plus the private link to the embedder.
+    networks:
+      - default
+      - embed_net
+    volumes:
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+      - ./scripts:/app/scripts
+    # Single worker + --reload for local dev, not the Dockerfile's
+    # --workers 2: uvicorn's --reload doesn't support multiple workers (it
+    # needs one process to own the file-watcher/restart cycle), and hot
+    # reload on every code edit is worth far more locally than crash
+    # isolation. The multi-worker production behavior is the Dockerfile's
+    # CMD, which this command intentionally overrides for local dev only --
+    # Railway/Render never see this file.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  db_data:
+
+networks:
+  # Private API <-> embedder link. `internal: true` removes the default route to the outside
+  # world for everything attached to it, which is exactly the guarantee wanted for a service
+  # that handles raw document text. (Consequence: you cannot publish the embedder's port to the
+  # host; to poke it, use `docker compose exec api python -c ...` -- see docs/adr/0012-*.md.)
+  embed_net:
+    internal: true

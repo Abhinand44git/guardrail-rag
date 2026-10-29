@@ -1,0 +1,395 @@
+{
+ "model": "nomic-ai/nomic-embed-text-v1.5",
+ "k": 10,
+ "config": {
+  "doc_prefix": "search_document: ",
+  "query_prefix": "search_query: ",
+  "trust_remote_code": true,
+  "code_repo": "nomic-ai/nomic-bert-2048"
+ },
+ "revision": {
+  "model_repo": "e9b6763023c676ca8431644204f50c2b100d9aab",
+  "code_repo": "7710840340a098cfb869c4f65e87cf2b1b70caca"
+ },
+ "requested_revision": "e9b6763023c676ca8431644204f50c2b100d9aab",
+ "versions": {
+  "python": "3.12.10",
+  "platform": "Windows-11-10.0.26220-SP0",
+  "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+  "sentence-transformers": "3.1.1",
+  "transformers": "4.44.2",
+  "torch": "2.4.1+cpu",
+  "huggingface_hub": "0.36.2",
+  "numpy": "2.5.3",
+  "einops": "0.8.0"
+ },
+ "truncated_chunks": 0,
+ "timing": {
+  "model_load_s": 28.25,
+  "corpus_embed_s": 226.68,
+  "per_chunk_ms": 2024.0,
+  "query_ms_median": 118.5,
+  "query_ms_p95": 144.0
+ },
+ "summary": {
+  "paraphrase": {
+   "n": 10,
+   "bm25_recall": 0.7,
+   "bm25_mrr": 0.4638188608776844,
+   "model_recall": 0.6,
+   "model_mrr": 0.42035243841126196
+  },
+  "identifier": {
+   "n": 4,
+   "bm25_recall": 1.0,
+   "bm25_mrr": 0.5357142857142857,
+   "model_recall": 1.0,
+   "model_mrr": 0.8
+  },
+  "code": {
+   "n": 9,
+   "bm25_recall": 0.6666666666666666,
+   "bm25_mrr": 0.35665341356830715,
+   "model_recall": 0.7777777777777778,
+   "model_mrr": 0.4822196322196322
+  },
+  "broad": {
+   "n": 5,
+   "bm25_recall": 0.2,
+   "bm25_mrr": 0.1394825918762089,
+   "model_recall": 0.8,
+   "model_mrr": 0.3888888888888889
+  },
+  "ALL": {
+   "n": 28,
+   "bm25_recall": 0.6428571428571429,
+   "bm25_mrr": 0.38172640832606414,
+   "model_recall": 0.75,
+   "model_mrr": 0.4888551970904912
+  }
+ },
+ "rows": [
+  {
+   "id": "P1",
+   "category": "paraphrase",
+   "answerable": true,
+   "top1_score": 0.7295234203338623,
+   "top1_file": "docs\\GuardRail_RAG_Analysis.md",
+   "rank": 1,
+   "bm25_rank": 1
+  },
+  {
+   "id": "P2",
+   "category": "paraphrase",
+   "answerable": true,
+   "top1_score": 0.7214138507843018,
+   "top1_file": "docs\\GuardRail_RAG_Analysis.md",
+   "rank": 1,
+   "bm25_rank": 17
+  },
+  {
+   "id": "P3",
+   "category": "paraphrase",
+   "answerable": true,
+   "top1_score": 0.6529241800308228,
+   "top1_file": "docs\\GuardRail_RAG_Design.md",
+   "rank": 2,
+   "bm25_rank": 1
+  },
+  {
+   "id": "P4",
+   "category": "paraphrase",
+   "answerable": true,
+   "top1_score": 0.7152780294418335,
+   "top1_file": "code\\README.md",
+   "rank": 25,
+   "bm25_rank": 7
+  },
+  {
+   "id": "P5",
+   "category": "paraphrase",
+   "answerable": true,
+   "top1_score": 0.676750659942627,
+   "top1_file": "docs\\GuardRail_RAG_Decision_Log.md",
+   "rank": 36,
+   "bm25_rank": 14
+  },
+  {
+   "id": "P6",
+   "category": "paraphrase",
+   "answerable": true,
+   "top1_score": 0.6672901511192322,
+   "top1_file": "docs\\GuardRail_RAG_Decision_Log.md",
+   "rank": 2,
+   "bm25_rank": 1
+  },
+  {
+   "id": "P7",
+   "category": "paraphrase",
+   "answerable": true,
+   "top1_score": 0.7042102813720703,
+   "top1_file": "code\\app\\config.py",
+   "rank": 17,
+   "bm25_rank": 18
+  },
+  {
+   "id": "P8",
+   "category": "paraphrase",
+   "answerable": true,
+   "top1_score": 0.6309266090393066,
+   "top1_file": "code\\migrations\\0007_users_is_active.py",
+   "rank": 13,
+   "bm25_rank": 7
+  },
+  {
+   "id": "P9",
+   "category": "paraphrase",
+   "answerable": true,
+   "top1_score": 0.6560629606246948,
+   "top1_file": "code\\README.md",
+   "rank": 2,
+   "bm25_rank": 6
+  },
+  {
+   "id": "P10",
+   "category": "paraphrase",
+   "answerable": true,
+   "top1_score": 0.6493867635726929,
+   "top1_file": "code\\Dockerfile",
+   "rank": 2,
+   "bm25_rank": 1
+  },
+  {
+   "id": "I1",
+   "category": "identifier",
+   "answerable": true,
+   "top1_score": 0.7060741186141968,
+   "top1_file": "code\\app\\user_provisioning.py",
+   "rank": 1,
+   "bm25_rank": 7
+  },
+  {
+   "id": "I2",
+   "category": "identifier",
+   "answerable": true,
+   "top1_score": 0.7236540913581848,
+   "top1_file": "code\\app\\rbac.py",
+   "rank": 1,
+   "bm25_rank": 1
+  },
+  {
+   "id": "I3",
+   "category": "identifier",
+   "answerable": true,
+   "top1_score": 0.8042726516723633,
+   "top1_file": "code\\migrations\\0008_max_admins_trigger_active_and_update.py",
+   "rank": 5,
+   "bm25_rank": 2
+  },
+  {
+   "id": "I4",
+   "category": "identifier",
+   "answerable": true,
+   "top1_score": 0.671802282333374,
+   "top1_file": "code\\app\\config.py",
+   "rank": 1,
+   "bm25_rank": 2
+  },
+  {
+   "id": "C1",
+   "category": "code",
+   "answerable": true,
+   "top1_score": 0.7384947538375854,
+   "top1_file": "code\\app\\chunking.py",
+   "rank": 1,
+   "bm25_rank": 2
+  },
+  {
+   "id": "C2",
+   "category": "code",
+   "answerable": true,
+   "top1_score": 0.6965925693511963,
+   "top1_file": "docs\\GuardRail_RAG_Decision_Log.md",
+   "rank": 55,
+   "bm25_rank": 94
+  },
+  {
+   "id": "C3",
+   "category": "code",
+   "answerable": true,
+   "top1_score": 0.7661141753196716,
+   "top1_file": "docs\\GuardRail_RAG_Decision_Log.md",
+   "rank": 4,
+   "bm25_rank": 1
+  },
+  {
+   "id": "C4",
+   "category": "code",
+   "answerable": true,
+   "top1_score": 0.6996254324913025,
+   "top1_file": "docs\\GuardRail_RAG_Analysis.md",
+   "rank": 26,
+   "bm25_rank": 8
+  },
+  {
+   "id": "Y1",
+   "category": "broad",
+   "answerable": true,
+   "top1_score": 0.7035794258117676,
+   "top1_file": "code\\app\\deps.py",
+   "rank": 4,
+   "bm25_rank": 16,
+   "parts_total": 3,
+   "parts_model": 1,
+   "parts_bm25": 0
+  },
+  {
+   "id": "Y2",
+   "category": "broad",
+   "answerable": true,
+   "top1_score": 0.6870123147964478,
+   "top1_file": "docs\\GuardRail_RAG_Decision_Log.md",
+   "rank": 2,
+   "bm25_rank": 33,
+   "parts_total": 3,
+   "parts_model": 1,
+   "parts_bm25": 0
+  },
+  {
+   "id": "Y3",
+   "category": "broad",
+   "answerable": true,
+   "top1_score": 0.6826740503311157,
+   "top1_file": "code\\app\\routers\\operator.py",
+   "rank": 36,
+   "bm25_rank": 12,
+   "parts_total": 2,
+   "parts_model": 0,
+   "parts_bm25": 0
+  },
+  {
+   "id": "Y4",
+   "category": "broad",
+   "answerable": true,
+   "top1_score": 0.6766372919082642,
+   "top1_file": "docs\\GuardRail_RAG_Decision_Log.md",
+   "rank": 6,
+   "bm25_rank": 47,
+   "parts_total": 2,
+   "parts_model": 1,
+   "parts_bm25": 0
+  },
+  {
+   "id": "Y5",
+   "category": "code",
+   "answerable": true,
+   "top1_score": 0.7193048596382141,
+   "top1_file": "code\\app\\routers\\auth.py",
+   "rank": 1,
+   "bm25_rank": 11
+  },
+  {
+   "id": "U1",
+   "category": "unanswerable",
+   "answerable": false,
+   "top1_score": 0.6710726022720337,
+   "top1_file": "docs\\GuardRail_RAG.md"
+  },
+  {
+   "id": "U2",
+   "category": "unanswerable",
+   "answerable": false,
+   "top1_score": 0.5897574424743652,
+   "top1_file": "docs\\GuardRail_RAG.md"
+  },
+  {
+   "id": "U3",
+   "category": "unanswerable",
+   "answerable": false,
+   "top1_score": 0.6908310651779175,
+   "top1_file": "code\\app\\embeddings.py"
+  },
+  {
+   "id": "U4",
+   "category": "unanswerable",
+   "answerable": false,
+   "top1_score": 0.5801758766174316,
+   "top1_file": "code\\README.md"
+  },
+  {
+   "id": "U5",
+   "category": "unanswerable",
+   "answerable": false,
+   "top1_score": 0.6721218824386597,
+   "top1_file": "docs\\GuardRail_RAG_Analysis.md"
+  },
+  {
+   "id": "Y8",
+   "category": "broad",
+   "answerable": true,
+   "top1_score": 0.6464329361915588,
+   "top1_file": "code\\app\\models.py",
+   "rank": 1,
+   "bm25_rank": 2,
+   "parts_total": 2,
+   "parts_model": 2,
+   "parts_bm25": 2
+  },
+  {
+   "id": "Y9",
+   "category": "code",
+   "answerable": true,
+   "top1_score": 0.6205662488937378,
+   "top1_file": "docs\\GuardRail_RAG_Decision_Log.md",
+   "rank": 2,
+   "bm25_rank": 1
+  },
+  {
+   "id": "Y10",
+   "category": "code",
+   "answerable": true,
+   "top1_score": 0.6097020506858826,
+   "top1_file": "code\\app\\chunking.py",
+   "rank": 1,
+   "bm25_rank": 40,
+   "parts_total": 3,
+   "parts_model": 3,
+   "parts_bm25": 0
+  },
+  {
+   "id": "Y11",
+   "category": "code",
+   "answerable": true,
+   "top1_score": 0.6872045397758484,
+   "top1_file": "code\\README.md",
+   "rank": 3,
+   "bm25_rank": 3,
+   "parts_total": 2,
+   "parts_model": 1,
+   "parts_bm25": 1
+  },
+  {
+   "id": "Y12",
+   "category": "code",
+   "answerable": true,
+   "top1_score": 0.6191756725311279,
+   "top1_file": "docs\\GuardRail_RAG_Decision_Log.md",
+   "rank": 5,
+   "bm25_rank": 8
+  },
+  {
+   "id": "U6",
+   "category": "unanswerable",
+   "answerable": false,
+   "top1_score": 0.5759357810020447,
+   "top1_file": "code\\README.md"
+  },
+  {
+   "id": "U7",
+   "category": "unanswerable",
+   "answerable": false,
+   "top1_score": 0.712580680847168,
+   "top1_file": "docs\\GuardRail_RAG_Analysis.md"
+  }
+ ]
+}

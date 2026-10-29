@@ -1,0 +1,23 @@
+# --- Secrets: never commit. .env.example (placeholders only) is the template. ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# --- Local virtual environments (any name) ---
+.venv*/
+venv/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

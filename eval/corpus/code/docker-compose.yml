@@ -1,0 +1,45 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: guardrail-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-guardrail}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-guardrail}
+      POSTGRES_DB: ${POSTGRES_DB:-guardrail_rag}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-guardrail} -d ${POSTGRES_DB:-guardrail_rag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: guardrail-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+      - ./scripts:/app/scripts
+    # Single worker + --reload for local dev, not the Dockerfile's
+    # --workers 2: uvicorn's --reload doesn't support multiple workers (it
+    # needs one process to own the file-watcher/restart cycle), and hot
+    # reload on every code edit is worth far more locally than crash
+    # isolation. The multi-worker production behavior is the Dockerfile's
+    # CMD, which this command intentionally overrides for local dev only --
+    # Railway/Render never see this file.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  db_data:

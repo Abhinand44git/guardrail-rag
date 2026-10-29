@@ -1,0 +1,12 @@
+# Exact Hugging Face commits this image is built from. One "<repo> <commit>" per line.
+# '#' starts a comment. A value of UNLOCKED means "take whatever is current and tell me".
+#
+# Both commits below are the ones recorded in eval/results/*.json by the real-model run
+# on 2026-10-10 (Python 3.12.10, torch 2.4.1+cpu, transformers 4.44.2, sentence-transformers
+# 3.1.1) -- i.e. the combination that is known to load and score on the project owner's machine.
+#
+# Why two repositories: nomic-embed-text-v1.5 ships NO modeling code of its own. At load time
+# (trust_remote_code=True) the library fetches that code from the second repo below. Without a
+# pin on it, a rebuild would silently run whatever code that repo has at that moment (ADR-0012).
+nomic-ai/nomic-embed-text-v1.5   e9b6763023c676ca8431644204f50c2b100d9aab
+nomic-ai/nomic-bert-2048         7710840340a098cfb869c4f65e87cf2b1b70caca
