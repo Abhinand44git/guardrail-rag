@@ -33,6 +33,8 @@ EXPECTED_ROUTES = {
     ("DELETE", "/ingest/document/{document_id}"),
     ("POST", "/project-memory"),
     ("GET", "/project-memory"),
+    ("PATCH", "/project-memory/{memory_id}"),
+    ("DELETE", "/project-memory/{memory_id}"),
     ("POST", "/retrieve"),
 }
 

@@ -268,3 +268,128 @@ async def test_list_requires_authentication_and_never_returns_vectors(world, bac
     assert (await _get(None)).status_code == 401
     item = (await _get(world.a.token[3])).json()["items"][0]
     assert "embedding" not in item and "tenant_id" not in item
+
+
+# ================================================================================================
+# PATCH / DELETE (ADR-0025): Admin only, same tenant only
+# ================================================================================================
+async def _patch(token, memory_id, **body):
+    async with await _client() as c:
+        return await c.patch(f"/project-memory/{memory_id}", json=body, headers=_auth(token) if token else {})
+
+
+async def _delete(token, memory_id):
+    async with await _client() as c:
+        return await c.delete(f"/project-memory/{memory_id}", headers=_auth(token) if token else {})
+
+
+async def _row(memory_id):
+    async with AsyncSessionLocal() as db:
+        return (await db.execute(select(ProjectMemory).where(ProjectMemory.id == memory_id))).scalar_one_or_none()
+
+
+async def test_an_admin_can_reclassify_an_entry_and_visibility_changes_immediately(world, backend):
+    mid = await _memory(world.a.tenant, world.a.users[2], uuid.uuid4(), "design", "decision note", 1, vec=bow("decision"))
+    assert (await _get(world.a.token[3])).json()["items"] == []                  # Admin-only: a Trainee sees nothing
+
+    r = await _patch(world.a.token[1], mid, min_role_required=3)
+    assert r.status_code == 200 and r.json()["min_role_required"] == 3
+    assert [i["id"] for i in (await _get(world.a.token[3])).json()["items"]] == [str(mid)]
+
+    assert (await _patch(world.a.token[1], mid, min_role_required=1)).status_code == 200
+    assert (await _get(world.a.token[3])).json()["items"] == []                  # and back
+
+
+async def test_reclassifying_changes_only_the_level(world, backend):
+    p = uuid.uuid4()
+    mid = await _memory(world.a.tenant, world.a.users[2], p, "testing", "keep me intact", 1)
+    before = await _row(mid)
+    await _patch(world.a.token[1], mid, min_role_required=2)
+    after = await _row(mid)
+    assert after.min_role_required == 2
+    for field in ("content", "project_id", "sdlc_phase", "created_by_user_id", "created_at", "tenant_id", "embedding_model"):
+        assert getattr(after, field) == getattr(before, field), field
+    assert list(after.embedding) == list(before.embedding)
+
+
+@pytest.mark.parametrize("who", [2, 3])
+async def test_developers_and_trainees_cannot_edit_or_delete_not_even_their_own_entry(world, backend, who):
+    mid = await _memory(world.a.tenant, world.a.users[who], uuid.uuid4(), "design", "mine", 1)
+    assert (await _patch(world.a.token[who], mid, min_role_required=3)).status_code == 401
+    assert (await _delete(world.a.token[who], mid)).status_code == 401
+    row = await _row(mid)
+    assert row is not None and row.min_role_required == 1
+
+
+async def test_no_token_and_operator_token_are_rejected(world, backend):
+    from app.security import create_operator_token
+    mid = await _memory(world.a.tenant, world.a.users[1], uuid.uuid4(), "design", "x", 1)
+    for token in (None, "garbage", create_operator_token(uuid.uuid4())):
+        assert (await _patch(token, mid, min_role_required=3)).status_code == 401
+        assert (await _delete(token, mid)).status_code == 401
+    assert await _row(mid) is not None
+
+
+async def test_an_admin_cannot_touch_another_tenants_entry_and_gets_the_same_answer_as_for_a_missing_id(world, backend):
+    theirs = await _memory(world.b.tenant, world.b.users[1], uuid.uuid4(), "design", "tenant B secret", 1)
+    r_other = await _patch(world.a.token[1], theirs, min_role_required=3)
+    r_gone = await _patch(world.a.token[1], uuid.uuid4(), min_role_required=3)
+    assert r_other.status_code == r_gone.status_code == 404
+    assert r_other.json() == r_gone.json(), "must not reveal whether the id exists in another tenant"
+    d_other, d_gone = await _delete(world.a.token[1], theirs), await _delete(world.a.token[1], uuid.uuid4())
+    assert d_other.status_code == d_gone.status_code == 404 and d_other.json() == d_gone.json()
+    survivor = await _row(theirs)
+    assert survivor is not None and survivor.min_role_required == 1, "tenant B's entry is untouched"
+
+
+@pytest.mark.parametrize("body", [{"min_role_required": 0}, {"min_role_required": 4}, {"min_role_required": "admin"},
+                                  {"min_role_required": None}, {}])
+async def test_patch_rejects_invalid_levels_and_changes_nothing(world, backend, body):
+    mid = await _memory(world.a.tenant, world.a.users[1], uuid.uuid4(), "design", "x", 2)
+    assert (await _patch(world.a.token[1], mid, **body)).status_code == 422
+    assert (await _row(mid)).min_role_required == 2
+
+
+async def test_a_malformed_id_is_rejected(world, backend):
+    assert (await _patch(world.a.token[1], "not-a-uuid", min_role_required=3)).status_code == 422
+    assert (await _delete(world.a.token[1], "not-a-uuid")).status_code == 422
+
+
+async def test_delete_removes_the_entry_everywhere_and_leaves_the_others(world, backend):
+    p, a = uuid.uuid4(), world.a.users[1]
+    gone = await _memory(world.a.tenant, a, p, "design", "delete me decision", 3, vec=bow("decision"))
+    kept = await _memory(world.a.tenant, a, p, "design", "keep me decision", 3, vec=bow("decision"))
+    r = await _delete(world.a.token[1], gone)
+    assert r.status_code == 204 and r.content == b""
+    assert await _row(gone) is None and await _row(kept) is not None
+    assert [i["id"] for i in (await _get(world.a.token[1])).json()["items"]] == [str(kept)]
+    from tests.test_retrieve_endpoint import _retrieve
+    found = (await _retrieve(world.a.token[3], query="decision", k=20)).json()["memory"]
+    assert [m["memory_id"] for m in found] == [str(kept)]
+    assert (await _delete(world.a.token[1], gone)).status_code == 404            # second delete: not found
+
+
+async def test_a_demoted_admins_old_token_cannot_edit_or_delete(world, backend):
+    mid = await _memory(world.a.tenant, world.a.users[2], uuid.uuid4(), "design", "x", 1)
+    token = world.a.token[1]
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("UPDATE users SET role = 3 WHERE id = :u"), {"u": world.a.users[1]})
+        await db.commit()
+    assert (await _patch(token, mid, min_role_required=3)).status_code == 401
+    assert (await _delete(token, mid)).status_code == 401
+    assert (await _row(mid)).min_role_required == 1
+
+
+async def test_a_database_failure_during_delete_is_a_safe_500_and_the_entry_survives(world, backend, monkeypatch):
+    from sqlalchemy.exc import DBAPIError
+    from sqlalchemy.ext.asyncio import AsyncSession
+    mid = await _memory(world.a.tenant, world.a.users[1], uuid.uuid4(), "design", "x", 1)
+
+    async def boom(self, *a, **k):
+        raise DBAPIError("INSERT secret_table", {}, Exception("connection reset: host=db user=guardrail"))
+    monkeypatch.setattr(AsyncSession, "commit", boom)
+    r = await _delete(world.a.token[1], mid)
+    monkeypatch.undo()
+    assert r.status_code == 500 and r.json()["detail"]["error"] == "server_error"
+    assert "secret_table" not in r.text and "guardrail" not in r.text
+    assert await _row(mid) is not None

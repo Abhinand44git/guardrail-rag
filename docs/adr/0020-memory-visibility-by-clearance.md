@@ -1,6 +1,6 @@
 # ADR-0020: Project memory is visible by clearance alone, and defaults to Admin-only
 
-- **Status:** Accepted; amended by ADR-0023 (authors also always see their own entries)
+- **Status:** Accepted; amended by ADR-0023 (authors also always see their own entries); its open questions closed by ADR-0025
 - **Recorded:** 2026-10-25
 - **Related:** ADR-0002, ADR-0004. Migration `0013`. **Supersedes** the Analysis-doc line "Admin sees all entries, Developer/Trainee see only their own" for `GET /project-memory`.
 

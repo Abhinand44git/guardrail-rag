@@ -46,19 +46,19 @@ Three containers. The **embedder** holds the embedding model and its code, downl
 | Operator | `POST /operator/login`, `POST /operator/logout`, `POST /operator/tenants`, `PATCH /operator/tenants/{id}`, `POST /operator/tenants/{id}/admin` |
 | Admin | `POST` / `GET /admin/users`, `PATCH` / `DELETE /admin/users/{id}` |
 | Ingestion | `POST /ingest/code`, `POST /ingest/document` (PDF, Markdown), `PATCH` / `DELETE /ingest/document/{id}` |
-| Project memory | `POST` / `GET /project-memory` (decisions tagged with an SDLC phase; new entries are Admin-only unless the writer sets a looser level) |
+| Project memory | `POST` / `GET /project-memory` (decisions tagged with an SDLC phase; new entries are Admin-only unless the writer sets a looser level; you always see your own), `PATCH` / `DELETE /project-memory/{id}` (Admin only). Trainees read but cannot write |
 | Retrieval | `POST /retrieve`: the document chunks and memory entries **you are allowed to see** that are closest in meaning to a question, with similarity scores |
 
-**How retrieval works.** `POST /retrieve` takes `{"query": "...", "k": 5}` (optionally `project_id` and `phase`) and returns two ranked lists, `documents` and `memory`, each hit with a cosine `score`. Which rows can appear is decided by the caller's tenant and clearance (read from the database, not the login token) and, for memory, by authorship, *before* anything is ranked; `project_id` and `phase` only narrow results and can never widen them ([ADR-0020](docs/adr/0020-memory-visibility-by-clearance.md), [ADR-0023](docs/adr/0023-authors-see-their-own-memory.md), [ADR-0024](docs/adr/0024-role-from-database-everywhere.md), [ADR-0022](docs/adr/0022-retrieve-contract.md)). GuardRail never calls a language model: your own tool or model takes these fragments and writes the answer.
+**How retrieval works.** `POST /retrieve` takes `{"query": "...", "k": 5}` (optionally `project_id` and `phase`) and returns two ranked lists, `documents` and `memory`, each hit with a cosine `score`. Which rows can appear is decided by the caller's tenant and clearance (read from the database, not the login token) and, for memory, by authorship, *before* anything is ranked; `project_id` and `phase` only narrow results and can never widen them ([ADR-0020](docs/adr/0020-memory-visibility-by-clearance.md), [ADR-0023](docs/adr/0023-authors-see-their-own-memory.md), [ADR-0025](docs/adr/0025-memory-edit-admin-only-trainees-read-only.md), [ADR-0024](docs/adr/0024-role-from-database-everywhere.md), [ADR-0022](docs/adr/0022-retrieve-contract.md)). GuardRail never calls a language model: your own tool or model takes these fragments and writes the answer.
 
-**Not built yet:** answer generation (by design), reclassifying or deleting memory entries, password reset and login rate limiting (Phase 6), and deployment (Phase 7).
+**Not built yet:** answer generation (by design), password reset and login rate limiting (Phase 6), and deployment (Phase 7).
 
 ## Quick start
 
 Requires Docker and a few GB of free disk (the embedder image includes PyTorch and the model). Building it needs internet **once**.
 
 ```bash
-git clone https://github.com/Abhinand44git/guardrail-rag.git
+git clone https://github.com/<your-username>/guardrail-rag.git
 cd guardrail-rag
 
 cp .env.example .env        # PowerShell: Copy-Item .env.example .env
@@ -80,7 +80,7 @@ Interactive API docs are at `http://localhost:8000/docs`. Log in as a seeded fix
 ## Tests
 
 ```bash
-docker compose exec api pytest -q        # 322 tests; expect 319 to pass and 3 to skip inside the container (they check the compose and embedder Dockerfile, which are not copied into the API image)
+docker compose exec api pytest -q        # 337 tests; expect 334 to pass and 3 to skip inside the container (they check the compose and embedder Dockerfile, which are not copied into the API image)
 ```
 
 Tests run against a real Postgres + pgvector, not mocks. Most test behaviour end to end over HTTP. [`tests/test_schema.py`](tests/test_schema.py) pins what the documentation claims about the database (constraints, defaults, the admin-cap trigger) and compares `models.py` against the migrations; [`tests/test_api_surface.py`](tests/test_api_surface.py) pins the exact list of endpoints; [`tests/test_embedder_service.py`](tests/test_embedder_service.py) runs the embedder's real HTTP layer on a real socket against a stand-in model. The tests were checked by deliberately breaking the code they guard, to confirm they fail when they should.
@@ -110,7 +110,7 @@ Stated plainly, on purpose ([ADR-0003](docs/adr/0003-portfolio-framing.md)):
 - **Slow synchronous ingestion** and **fixed-size chunking**, sized in words (about 1.9 model tokens per word on this project's own text), not in model tokens ([ADR-0015](docs/adr/0015-words-not-tokens.md)).
 - **The embedding model runs third-party modeling code** (`trust_remote_code=True`). It is pinned to exact commits in `embedder/revisions.lock` and fetched only at build time ([ADR-0012](docs/adr/0012-separate-embedder-container.md)), but it is still code you are choosing to trust.
 - **Vectors are stored at exactly the model's 768 numbers.** A model with a different width needs a migration and a re-embed ([ADR-0019](docs/adr/0019-vectors-768-no-padding.md)).
-- **Memory entries cannot yet be reclassified or deleted** once saved. You always see the ones you wrote; everyone else's follow clearance ([ADR-0020](docs/adr/0020-memory-visibility-by-clearance.md), [ADR-0023](docs/adr/0023-authors-see-their-own-memory.md)).
+- **Memory notes are append-only for everyone but Admins.** Developers can save notes; only an Admin can change a note's level or delete it; the text of a note cannot be edited (delete and save again); Trainees cannot write ([ADR-0025](docs/adr/0025-memory-edit-admin-only-trainees-read-only.md)).
 - **Chat subscriptions are not API access.** ChatGPT Plus, Claude Pro and Gemini plans are logins to apps, not API keys, which is why GuardRail is retrieval-only ([ADR-0002](docs/adr/0002-phase-5-retrieval-only.md)).
 - Real SMTP is unverified (only the dev outbox is exercised); one Fernet key, no rotation; no login rate limiting yet.
 

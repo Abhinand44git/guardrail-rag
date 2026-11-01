@@ -14,13 +14,18 @@ Who may do what:
 
 Default clearance for a new entry is 1 (Admin only), fail-closed, exactly like a new document
 (ADR-0020); the writer may set a looser level at creation, same as ingestion allows, and always
-sees their own entries whatever the level (ADR-0023). NOTE, left for the owner to decide: there is
-no PATCH/DELETE for memory yet, so after creation nobody can reclassify or remove an entry.
+sees their own entries whatever the level (ADR-0023).
+
+  * PATCH /{id} and DELETE /{id} -- Admin only, like documents (ADR-0025): a role that creates
+    content does not also get to reclassify or remove it. PATCH changes the clearance level and
+    nothing else (changing the text would mean re-embedding: delete and save a new note). DELETE is
+    a hard delete, since nothing references a memory entry. An id that does not exist and an id in
+    another tenant both give the same generic 404.
 """
 import asyncio
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,11 +33,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.deps import LiveUser, require_live_role
 from app.embeddings import EmbedderUnavailable, EmbeddingService, get_embedding_service
-from app.errors import db_failed, embedder_unavailable, embedding_failed
+from app.errors import db_failed, embedder_unavailable, embedding_failed, not_found
 from app.models import ProjectMemory, Role
 from app.phases import SdlcPhase, phases_up_to
 from app.rbac import visible_memory_query
-from app.schemas import MemoryCreateRequest, MemoryListResponse, MemoryResponse
+from app.schemas import MemoryCreateRequest, MemoryListResponse, MemoryPatchRequest, MemoryResponse
 
 router = APIRouter(prefix="/project-memory", tags=["project-memory"])
 
@@ -111,3 +116,53 @@ async def list_memory(
         raise db_failed() from e
 
     return MemoryListResponse(items=[_to_response(m) for m in rows], total=total, limit=limit, offset=offset)
+
+
+async def _entry_in_callers_tenant(db: AsyncSession, caller: LiveUser, memory_id: uuid.UUID) -> ProjectMemory:
+    """Find one entry by id, through the same access rule everything else uses (tenant first), so
+    there is no second hand-written tenant filter to get wrong. The callers of this are Admin-only,
+    for whom the rule covers every entry in their own tenant and nothing outside it."""
+    try:
+        entry = (await db.execute(
+            visible_memory_query(caller.tenant_id, caller.role, caller.user_id)
+            .where(ProjectMemory.id == memory_id)
+        )).scalar_one_or_none()
+    except DBAPIError as e:
+        raise db_failed() from e
+    if entry is None:
+        raise not_found("memory entry")
+    return entry
+
+
+@router.patch("/{memory_id}", response_model=MemoryResponse)
+async def reclassify_memory(
+    memory_id: uuid.UUID,
+    body: MemoryPatchRequest,
+    caller: LiveUser = Depends(require_live_role(Role.ADMIN.value)),
+    db: AsyncSession = Depends(get_db),
+):
+    entry = await _entry_in_callers_tenant(db, caller, memory_id)
+    entry.min_role_required = body.min_role_required
+    try:
+        await db.commit()
+    except DBAPIError as e:
+        await db.rollback()
+        raise db_failed() from e
+    await db.refresh(entry)
+    return _to_response(entry)
+
+
+@router.delete("/{memory_id}", status_code=204)
+async def delete_memory(
+    memory_id: uuid.UUID,
+    caller: LiveUser = Depends(require_live_role(Role.ADMIN.value)),
+    db: AsyncSession = Depends(get_db),
+):
+    entry = await _entry_in_callers_tenant(db, caller, memory_id)
+    await db.delete(entry)
+    try:
+        await db.commit()
+    except DBAPIError as e:
+        await db.rollback()
+        raise db_failed() from e
+    return Response(status_code=204)

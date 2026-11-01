@@ -1,6 +1,6 @@
 # ADR-0023: Authors always see their own project-memory entries
 
-- **Status:** Accepted (amends ADR-0020)
+- **Status:** Accepted (amends ADR-0020); its open question about editing and deleting entries was closed by ADR-0025
 - **Recorded:** 2026-10-25
 - **Related:** ADR-0004, ADR-0020, ADR-0021.
 

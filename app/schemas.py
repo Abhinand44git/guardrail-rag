@@ -205,6 +205,12 @@ class MemoryCreateRequest(BaseModel):
         return v
 
 
+class MemoryPatchRequest(BaseModel):
+    """Reclassify only. Changing the TEXT of a note would mean re-embedding it, so the way to change
+    a note is to delete it and save a new one (ADR-0025)."""
+    min_role_required: int = Field(ge=Role.ADMIN.value, le=Role.TRAINEE.value)
+
+
 class MemoryResponse(BaseModel):
     id: UUID
     project_id: UUID
