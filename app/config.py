@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
+    # An emailed temporary password stops working for login after this many hours if it has not been
+    # used to set a real one (ADR-0026). An Admin can reissue.
+    temp_password_ttl_hours: int = 72
 
     # Fernet (encrypts tenants.llm_api_key_ref)
     fernet_master_key: str

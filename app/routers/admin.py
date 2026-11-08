@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import current_tenant_id, require_role
-from app.email import EmailSendError, send_new_user_welcome_email
+from app.email import EmailSendError, send_new_user_welcome_email, send_password_reissue_email
 from app.models import Role, Tenant, User
 from app.schemas import (
     UserCreateRequest,
@@ -33,7 +33,7 @@ from app.schemas import (
     UserResponse,
 )
 from app.security import generate_temp_password, hash_password
-from app.user_provisioning import check_admin_cap_or_raise, check_username_available_or_raise
+from app.user_provisioning import check_admin_cap_or_raise, check_username_available_or_raise, temp_password_state
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -72,6 +72,23 @@ _REACTIVATION_CONFIRM_ERROR = HTTPException(
             "To reactivate this user, provide confirm_email matching their "
             "registered email exactly."
         ),
+    },
+)
+
+
+_REISSUE_SELF_ERROR = HTTPException(
+    status_code=status.HTTP_400_BAD_REQUEST,
+    detail={
+        "error": "invalid_input",
+        "detail": "You cannot reissue your own password; use POST /auth/change-password instead.",
+    },
+)
+
+_REISSUE_INACTIVE_ERROR = HTTPException(
+    status_code=status.HTTP_400_BAD_REQUEST,
+    detail={
+        "error": "invalid_input",
+        "detail": "This user is deactivated. Reactivate them first, then reissue their password.",
     },
 )
 
@@ -130,6 +147,7 @@ async def create_user(
         email=body.email,
         hashed_password=hash_password(temp_password),
         role=body.role,
+        **temp_password_state(),
     )
     db.add(user)
 
@@ -310,6 +328,56 @@ async def deactivate_user(
 
     user = await _get_user_in_tenant_or_404(db, tenant_id, user_id)
     user.is_active = False
+
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.post("/users/{user_id}/reissue-password", response_model=UserResponse)
+async def reissue_password(
+    user_id: uuid.UUID,
+    payload: dict = Depends(require_role(Role.ADMIN.value)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin-initiated reset (ADR-0026): generate a NEW temporary password for another user in this
+    tenant and email it (never in the response). Exists because temporary passwords now expire: with
+    no way to get a new one, an expired password would lock the person out for good. The user must
+    change it at first login, it expires like any temporary password, and ALL of their earlier
+    sessions are signed out immediately (session_version is bumped).
+
+    Same all-or-nothing rule as account creation: if the email cannot be sent, nothing changes.
+    Not available on yourself (use change-password) or on a deactivated user. An id that does not
+    exist and an id in another tenant give the same generic 404. This is the Admin-triggered
+    minimum, not the full self-service "forgot password" flow, which stays Phase 6.
+    """
+    tenant_id = current_tenant_id(payload)
+    if str(user_id) == payload["sub"]:
+        raise _REISSUE_SELF_ERROR
+    user = await _get_user_in_tenant_or_404(db, tenant_id, user_id)
+    if not user.is_active:
+        raise _REISSUE_INACTIVE_ERROR
+
+    temp_password = generate_temp_password()
+    user.hashed_password = hash_password(temp_password)
+    user.must_change_password = True
+    for column, value in temp_password_state().items():
+        setattr(user, column, value)
+    user.session_version = User.session_version + 1
+
+    try:
+        await db.flush()
+        send_password_reissue_email(user.email, temp_password)
+    except (DBAPIError, EmailSendError):
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "server_error",
+                "detail": "The password could not be reissued — nothing was changed. Please try again.",
+            },
+        )
 
     await db.commit()
     await db.refresh(user)

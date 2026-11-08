@@ -10,7 +10,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Tenant, TokenBlacklist, User
+from app.models import Operator, Tenant, TokenBlacklist, User
 from app.security import TokenError, decode_token
 
 logger = logging.getLogger(__name__)
@@ -164,10 +164,26 @@ async def purge_expired_blacklist(db: AsyncSession, limit: int = BLACKLIST_PURGE
     return result.rowcount or 0
 
 
-async def require_operator(
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> dict:
+# ADR-0026. A valid token that belongs to someone still holding a TEMPORARY password. Distinct
+# from the generic 401 on purpose, for the same reason as the deactivation messages above: the
+# holder has proved the credential, so telling them what to do next reveals nothing new.
+_PASSWORD_CHANGE_REQUIRED = HTTPException(
+    status_code=status.HTTP_403_FORBIDDEN,
+    detail={
+        "error": "password_change_required",
+        "detail": "You must change your temporary password before using this endpoint (POST /auth/change-password).",
+    },
+)
+_OPERATOR_PASSWORD_CHANGE_REQUIRED = HTTPException(
+    status_code=status.HTTP_403_FORBIDDEN,
+    detail={
+        "error": "password_change_required",
+        "detail": "You must change your temporary password before using this endpoint (POST /operator/change-password).",
+    },
+)
+
+
+async def _authenticate_operator(token: str | None, db: AsyncSession) -> tuple[dict, Operator]:
     payload = _decode_or_401(token)
     if payload["plane"] != "operator":
         # Operator JWTs never carry tenant_id, so a user-plane token lands here
@@ -175,19 +191,43 @@ async def require_operator(
         raise _AUTH_ERROR
 
     # Same reasoning as require_user's blacklist check below -- added here
-    # too since POST /auth/logout accepts either plane's token (see
-    # app/routers/auth.py), so an operator's logged-out token needs to
+    # too since POST /operator/logout must make a logged-out operator token
     # actually stop working, not just a user's.
     if await _is_blacklisted(db, payload.get("jti")):
         raise _AUTH_ERROR
 
-    return payload
+    # ADR-0026: the operator's row is now consulted on every request (before, only the token was
+    # trusted), because the session version and the temporary-password flag live there. A token
+    # for an operator that does not exist, or one minted before a password change, is refused.
+    operator = await db.get(Operator, uuid.UUID(payload["sub"]))
+    if operator is None or payload.get("sv", 0) != operator.session_version:
+        raise _AUTH_ERROR
+    return payload, operator
 
 
-async def require_user(
+async def require_operator(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Every operator route except change-password and logout. Default-deny while the operator
+    still holds a temporary password."""
+    payload, operator = await _authenticate_operator(token, db)
+    if operator.must_change_password:
+        raise _OPERATOR_PASSWORD_CHANGE_REQUIRED
+    return payload
+
+
+async def require_operator_password_change_allowed(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """ONLY for POST /operator/change-password: authenticates fully, but does not refuse an
+    operator who still holds a temporary password (that is who the endpoint is for)."""
+    payload, _ = await _authenticate_operator(token, db)
+    return payload
+
+
+async def _authenticate_user(token: str | None, db: AsyncSession) -> tuple[dict, User]:
     payload = _decode_or_401(token)
     if payload["plane"] != "user":
         raise _AUTH_ERROR
@@ -230,7 +270,39 @@ async def require_user(
     # above, so using its role costs no extra query. This returns a COPY of the claims with the
     # role replaced; every dependency below (require_role, current_tenant_id, the routers) reads
     # the role only from here, so there is no second path that still trusts the token's role.
-    return {**payload, "role": user.role}
+    # ADR-0026: a token carries the session_version it was minted with ("sv"). A password change or
+    # reissue bumps the user's version, so every older token stops working at once. A token minted
+    # before this existed has no "sv" and counts as version 0: valid until the first change.
+    if payload.get("sv", 0) != user.session_version:
+        raise _AUTH_ERROR
+
+    return {**payload, "role": user.role}, user
+
+
+async def require_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    The gate every tenant route passes through. The default is DENY for someone still holding a
+    temporary password (ADR-0026): the check lives here, in the one dependency everything else is
+    built on (require_role, current_tenant_id, require_live_*), so a new endpoint cannot forget it.
+    tests/test_password_lifecycle.py walks the whole route table to prove it.
+    """
+    payload, user = await _authenticate_user(token, db)
+    if user.must_change_password:
+        raise _PASSWORD_CHANGE_REQUIRED
+    return payload
+
+
+async def require_user_password_change_allowed(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """ONLY for POST /auth/change-password: authenticates fully (blacklist, tenant, user, session
+    version) but does not refuse a user who still holds a temporary password."""
+    payload, _ = await _authenticate_user(token, db)
+    return payload
 
 
 def require_role(*allowed_roles: int):

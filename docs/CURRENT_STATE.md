@@ -4,16 +4,17 @@ Rewrite this page each phase. The Decision Log is append-only history; decisions
 
 **Last verified:** 2026-10-28, in the real Docker stack (compose, `pgvector/pgvector:pg16` image running pgvector 0.8.x, embedder container healthy, new port binding `127.0.0.1:5433->5432`).
 **How:** on a **fresh volume**: `alembic upgrade head` (`-> 0001` through `0013`, clean), `python -m scripts.seed` (seeded), `docker compose exec api pytest -q` → **319 passed, 3 skipped** (322 tests; the three skips are the tests that read `docker-compose.yml` or the Dockerfile, which are not copied into the API image). The same suite also passed, once, against an **existing** database that was still at revision `0003` with old seed rows, which upgraded through `0013` without error. Earlier the same suite passed 322 on bare-metal Postgres 16 + pgvector 0.6.0 (2026-10-25: the 215 from before Phase 5, plus 107 new or rewritten: 87 in `test_retrieve_endpoint.py` and `test_project_memory_endpoints.py`, 8 in `test_role_is_read_from_the_database.py`, 5 in `test_migration_0013.py`, 6 in `test_schema.py`, 1 compose test).
-**Since that Docker run** (2026-10-28), `PATCH` / `DELETE /project-memory/{id}` and 15 tests for them were added (337 tests, all passing on bare-metal Postgres 16 + pgvector 0.6.0, 2026-10-28); that increment has not yet been re-run in Docker, where it should give 334 passed, 3 skipped.
+**After the memory edit/delete increment** (`PATCH` / `DELETE /project-memory/{id}`, 15 more tests), the image was rebuilt and the suite re-run in Docker the same day: **334 passed, 3 skipped** (337 tests). Bare-metal Postgres 16 + pgvector 0.6.0: 337 passed.
+**After Batch C** (password lifecycle, ADR-0026; migration `0014`; 57 more tests): 394 tests, all passing on bare-metal Postgres 16 + pgvector 0.6.0 (2026-10-28). Not yet re-run in Docker, where it should give 391 passed, 3 skipped.
 **Not exercised in Docker:** `POST /retrieve` and `POST /project-memory` through the real embedding model (the tests use a stand-in embedder behind the same interface); everything else Phase 5 added is covered by the run above.
 
 ## What exists (the route table is pinned by `tests/test_api_surface.py`)
 
 | Area | Routes |
 |---|---|
-| Auth (users) | `POST /auth/login`, `POST /auth/logout` |
-| Operator | `POST /operator/login`, `POST /operator/logout`, `POST /operator/tenants`, `PATCH /operator/tenants/{id}`, `POST /operator/tenants/{id}/admin` (first Admin only) |
-| Admin | `POST/GET /admin/users`, `PATCH/DELETE /admin/users/{id}` (DELETE is a soft deactivation) |
+| Auth (users) | `POST /auth/login`, `POST /auth/logout`, `POST /auth/change-password` |
+| Operator | `POST /operator/login`, `POST /operator/logout`, `POST /operator/change-password`, `POST /operator/tenants`, `PATCH /operator/tenants/{id}`, `POST /operator/tenants/{id}/admin` (first Admin only) |
+| Admin | `POST/GET /admin/users`, `PATCH/DELETE /admin/users/{id}` (DELETE is a soft deactivation), `POST /admin/users/{id}/reissue-password` |
 | Ingest | `POST /ingest/code`, `POST /ingest/document`, `PATCH/DELETE /ingest/document/{id}` (Admin only; new documents default to Admin-only) |
 | Project memory | `POST /project-memory` (Admin, Developer), `GET /project-memory` (all roles), `PATCH` / `DELETE /project-memory/{id}` (Admin only; `PATCH` changes the level only, `DELETE` is a hard delete). You see an entry if it is in your tenant and either your clearance allows it or you wrote it; entries default to Admin-only. Trainees cannot write ([ADR-0020](adr/0020-memory-visibility-by-clearance.md), [ADR-0023](adr/0023-authors-see-their-own-memory.md), [ADR-0025](adr/0025-memory-edit-admin-only-trainees-read-only.md)) |
 | Retrieval | `POST /retrieve` (all roles): two ranked lists, document chunks and memory entries, each with a cosine score; no answer text, no model call ([ADR-0022](adr/0022-retrieve-contract.md)) |
@@ -30,11 +31,11 @@ Rewrite this page each phase. The Decision Log is append-only history; decisions
 - **No `/auth/refresh`, by design.** It was only ever written in the Analysis doc ([ADR-0016](adr/0016-no-refresh-endpoint.md)). Sessions last 60 minutes.
 - **No `user_llm_config`, `query_log`, `projects` or `project_members` tables** (ADR-0001, ADR-0004).
 - **No vector index.** Every search is an exact scan (a test fails if one appears).
-- **No self-service password change.** Temporary passwords are emailed and never expire.
+- **No self-service "forgot password" flow** (Phase 6), no rate limiting on login or `change-password`, no email telling someone their password changed, no breached-password check ([ADR-0026](adr/0026-password-lifecycle.md)).
 
 ## Schema
 
-Seven tables plus `alembic_version` (vectors are `vector(768)`, no padding: [ADR-0019](adr/0019-vectors-768-no-padding.md); `project_memory` has `min_role_required`): `operators`, `tenants`, `users`, `documents`, `document_vectors`, `project_memory`, `token_blacklist`. The schema comes from `alembic/versions/`; `tests/test_schema.py` states and checks what the docs claim about it. `models.py` and the migrations differ in 20 known, listed ways that do not change behaviour ([ADR-0009](adr/0009-docs-and-code-discipline.md)).
+Seven tables plus `alembic_version` (vectors are `vector(768)`, no padding: [ADR-0019](adr/0019-vectors-768-no-padding.md); `project_memory` has `min_role_required`; `users` and `operators` carry `must_change_password` and `session_version`, `users` also `temp_password_expires_at`: [ADR-0026](adr/0026-password-lifecycle.md)): `operators`, `tenants`, `users`, `documents`, `document_vectors`, `project_memory`, `token_blacklist`. The schema comes from `alembic/versions/`; `tests/test_schema.py` states and checks what the docs claim about it. `models.py` and the migrations differ in 20 known, listed ways that do not change behaviour ([ADR-0009](adr/0009-docs-and-code-discipline.md)).
 
 ## Evaluation
 
@@ -48,7 +49,7 @@ Golden set v2 (`eval/golden_set.json`): **35 questions, 28 answerable and 7 not*
 | 6 | Dense-only search; BM25 and nomic each find answers the other misses | **Evidence in** (union 86% vs 75% / 64%); hybrid not built: Batch D |
 | 7 | Fixed-size chunking, no file path or title in the chunk | Not decided, after the golden questions |
 | 8 | "Tokens" were really words | **Fixed** by renaming; chunks identical ([ADR-0015](adr/0015-words-not-tokens.md)). Real-token sizing belongs with #7 |
-| 9 | Emailed temporary passwords, no forced change | **Open** — its own security-critical batch |
+| 9 | Emailed temporary passwords, no forced change | **Fixed 2026-10-28** ([ADR-0026](adr/0026-password-lifecycle.md)): forced change, 72-hour expiry, change-password, Admin reissue, a change signs out every other session |
 | 10 | Several DB lookups on every authenticated request | **Accepted**, optimise only after measuring ([ADR-0013](adr/0013-accept-three-auth-lookups.md)) |
 | 11 | Expired `token_blacklist` rows never purged | **Fixed**: purged on logout ([ADR-0018](adr/0018-blacklist-stays-in-postgres.md)) |
 | 12 | Model loaded per worker, on first use | **Fixed** (separate embedder; built and running healthy in Docker, 2026-10-28) ([ADR-0012](adr/0012-separate-embedder-container.md)) |
@@ -64,7 +65,7 @@ Golden set v2 (`eval/golden_set.json`): **35 questions, 28 answerable and 7 not*
 1. Replace your live docs with the v3.0 copies delivered 2026-10-28 (`GuardRail_RAG.md`, `GuardRail_RAG_Analysis.md`, `GuardRail_RAG_Design.md`; they remove `/query` with generation, `POST /auth/refresh`, the 4,000-token budget and the 1536-wide vectors) and paste in the corrected project prompt. Delete the stale `HF_*` lines from your local `.env`.
 2. Set a real `POSTGRES_PASSWORD` in `.env` (and `DATABASE_URL` to match).
 3. Optional: one real `POST /retrieve` and `POST /project-memory` call through the real model. The Docker stack and migration `0013` are verified; this last piece is not.
-4. Decide the next batch: C (login hardening, trimmed) or D (hybrid retrieval).
+4. Next batch: D (hybrid retrieval quality). Batch C (password lifecycle) is done.
 
 ## Not yet verified anywhere
 
@@ -75,7 +76,8 @@ Golden set v2 (`eval/golden_set.json`): **35 questions, 28 answerable and 7 not*
 ```bash
 docker compose up --build -d && docker compose exec api alembic upgrade head
 docker compose exec api python -m scripts.seed
-docker compose exec api pytest -q                              # expect 334 passed, 3 skipped
-docker compose exec api python -m scripts.smoke_real_model     # real model through the embedder, 20 checks
+docker compose exec api pytest -q                              # expect 391 passed, 3 skipped
+docker compose exec api python -m scripts.smoke_real_model     # real model, real HTTP routes, all roles: 30 checks
+python -m scripts.demo_retrieve                                # 30-second demo from your own machine (needs httpx)
 docker compose exec api test -f /app/.env && echo LEAK || echo env-absent
 ```

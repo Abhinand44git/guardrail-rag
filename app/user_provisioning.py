@@ -25,11 +25,13 @@ have to agree on what "an admin" means for the same reason they had to
 agree on the cap number itself.
 """
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import Role, User
 
 
@@ -83,3 +85,17 @@ async def check_username_available_or_raise(
                 "detail": "This username is already taken in this tenant.",
             },
         )
+
+
+def temp_password_state() -> dict:
+    """
+    The columns that mark a user as holding a TEMPORARY password (ADR-0026): they must change it
+    before doing anything else, and if they never use it, it stops working for login after
+    settings.temp_password_ttl_hours. Used by every code path that hands out a temporary password
+    (Operator creating a first Admin, Admin creating a user, Admin reissuing), so the three cannot
+    drift apart.
+    """
+    return {
+        "must_change_password": True,
+        "temp_password_expires_at": datetime.now(timezone.utc) + timedelta(hours=settings.temp_password_ttl_hours),
+    }

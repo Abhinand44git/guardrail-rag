@@ -23,7 +23,7 @@ from app.database import AsyncSessionLocal
 import app.deps as deps_module
 from app.deps import purge_expired_blacklist, require_operator, require_user
 from app.main import app
-from app.models import Role, Tenant, TokenBlacklist, User
+from app.models import Operator, Role, Tenant, TokenBlacklist, User
 from app.security import create_operator_token, create_user_token, decode_token, hash_password
 
 PASSWORD = "SomeUsersPassword123!"
@@ -151,7 +151,13 @@ async def test_logout_blacklists_operator_token_and_subsequent_request_is_reject
     """Session 9: operator logout moved to its own POST /operator/logout --
     see the plane-separation tests below for /auth/logout now rejecting an
     operator token outright instead of accepting it."""
+    # ADR-0026: operator tokens are now checked against the operators table on every request
+    # (previously only the token was trusted), so this needs a REAL operator row.
     operator_id = uuid.uuid4()
+    async with AsyncSessionLocal() as db:
+        db.add(Operator(id=operator_id, username=f"op-{operator_id.hex[:8]}",
+                        email=f"{operator_id.hex[:8]}@blacklist-test.local", hashed_password=hash_password("x")))
+        await db.commit()
     tenant_id = await _make_tenant()  # a real tenant to PATCH against
     token = create_operator_token(operator_id)
     try:
@@ -168,6 +174,9 @@ async def test_logout_blacklists_operator_token_and_subsequent_request_is_reject
         assert after.status_code == 401
     finally:
         await _cleanup(tenant_id)
+        async with AsyncSessionLocal() as db:
+            await db.execute(sa.text("DELETE FROM operators WHERE id = :i"), {"i": operator_id})
+            await db.commit()
 
 
 async def test_blacklisted_operator_token_row_has_null_tenant_id():

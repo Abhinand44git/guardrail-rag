@@ -35,5 +35,6 @@ One short file per decision: context, decision, consequences, and how it is chec
 | 0023 | [Authors always see their own project-memory entries](0023-authors-see-their-own-memory.md) | Accepted |
 | 0024 | [Every authenticated endpoint uses the caller's current role from the database](0024-role-from-database-everywhere.md) | Accepted |
 | 0025 | [Memory entries can be reclassified or deleted by Admins only; Trainees read but do not write](0025-memory-edit-admin-only-trainees-read-only.md) | Accepted |
+| 0026 | [Temporary passwords must be changed, expire, and a change signs out every other session](0026-password-lifecycle.md) | Accepted |
 
 **Template:** copy any file above. Keep it under one page.

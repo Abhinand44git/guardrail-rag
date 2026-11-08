@@ -42,16 +42,16 @@ Three containers. The **embedder** holds the embedding model and its code, downl
 
 | Area | Endpoints |
 |---|---|
-| Auth (users) | `POST /auth/login`, `POST /auth/logout` |
-| Operator | `POST /operator/login`, `POST /operator/logout`, `POST /operator/tenants`, `PATCH /operator/tenants/{id}`, `POST /operator/tenants/{id}/admin` |
-| Admin | `POST` / `GET /admin/users`, `PATCH` / `DELETE /admin/users/{id}` |
+| Auth (users) | `POST /auth/login`, `POST /auth/logout`, `POST /auth/change-password` |
+| Operator | `POST /operator/login`, `POST /operator/logout`, `POST /operator/change-password`, `POST /operator/tenants`, `PATCH /operator/tenants/{id}`, `POST /operator/tenants/{id}/admin` |
+| Admin | `POST` / `GET /admin/users`, `PATCH` / `DELETE /admin/users/{id}`, `POST /admin/users/{id}/reissue-password` |
 | Ingestion | `POST /ingest/code`, `POST /ingest/document` (PDF, Markdown), `PATCH` / `DELETE /ingest/document/{id}` |
 | Project memory | `POST` / `GET /project-memory` (decisions tagged with an SDLC phase; new entries are Admin-only unless the writer sets a looser level; you always see your own), `PATCH` / `DELETE /project-memory/{id}` (Admin only). Trainees read but cannot write |
 | Retrieval | `POST /retrieve`: the document chunks and memory entries **you are allowed to see** that are closest in meaning to a question, with similarity scores |
 
 **How retrieval works.** `POST /retrieve` takes `{"query": "...", "k": 5}` (optionally `project_id` and `phase`) and returns two ranked lists, `documents` and `memory`, each hit with a cosine `score`. Which rows can appear is decided by the caller's tenant and clearance (read from the database, not the login token) and, for memory, by authorship, *before* anything is ranked; `project_id` and `phase` only narrow results and can never widen them ([ADR-0020](docs/adr/0020-memory-visibility-by-clearance.md), [ADR-0023](docs/adr/0023-authors-see-their-own-memory.md), [ADR-0025](docs/adr/0025-memory-edit-admin-only-trainees-read-only.md), [ADR-0024](docs/adr/0024-role-from-database-everywhere.md), [ADR-0022](docs/adr/0022-retrieve-contract.md)). GuardRail never calls a language model: your own tool or model takes these fragments and writes the answer.
 
-**Not built yet:** answer generation (by design), password reset and login rate limiting (Phase 6), and deployment (Phase 7).
+**Not built yet:** answer generation (by design), the self-service "forgot password" flow and login rate limiting (Phase 6), and deployment (Phase 7). New accounts start with a temporary emailed password that must be changed at first login and expires after 72 hours ([ADR-0026](docs/adr/0026-password-lifecycle.md)).
 
 ## Quick start
 
@@ -80,7 +80,7 @@ Interactive API docs are at `http://localhost:8000/docs`. Log in as a seeded fix
 ## Tests
 
 ```bash
-docker compose exec api pytest -q        # 337 tests; expect 334 to pass and 3 to skip inside the container (they check the compose and embedder Dockerfile, which are not copied into the API image)
+docker compose exec api pytest -q        # 394 tests; expect 391 to pass and 3 to skip inside the container (they check the compose and embedder Dockerfile, which are not copied into the API image)
 ```
 
 Tests run against a real Postgres + pgvector, not mocks. Most test behaviour end to end over HTTP. [`tests/test_schema.py`](tests/test_schema.py) pins what the documentation claims about the database (constraints, defaults, the admin-cap trigger) and compares `models.py` against the migrations; [`tests/test_api_surface.py`](tests/test_api_surface.py) pins the exact list of endpoints; [`tests/test_embedder_service.py`](tests/test_embedder_service.py) runs the embedder's real HTTP layer on a real socket against a stand-in model. The tests were checked by deliberately breaking the code they guard, to confirm they fail when they should.
@@ -125,6 +125,18 @@ eval/           Retrieval evaluation harness, golden set, frozen corpus, saved r
 scripts/        seed.py, smoke_real_model.py
 docs/           CURRENT_STATE.md, adr/ (decisions), BUILD_LOG.md (history)
 ```
+
+## Try it (30 seconds)
+
+With the stack up and seeded (`docker compose up -d`, `alembic upgrade head`, `python -m scripts.seed`), run this from your own machine (needs `pip install httpx`):
+
+```bash
+python -m scripts.demo_retrieve
+```
+
+It saves a confidential document (Admin-only), a harmless one and a note, then asks the **same question** as an Admin and as a Trainee through `POST /retrieve`. The Admin gets both documents; the Trainee gets only the harmless one, even though the confidential one is the better match. Add `--keep` to leave the data in place and explore the API at `http://localhost:8000/docs`.
+
+`docker compose exec api python -m scripts.smoke_real_model` is the longer version: 30 checks across every role and both tenants, through the real embedding model, that cleans up after itself.
 
 ## Troubleshooting
 

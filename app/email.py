@@ -62,24 +62,8 @@ def _smtp_configured() -> bool:
     return bool(settings.smtp_host)
 
 
-def send_new_user_welcome_email(to_email: str, temp_password: str, role_name: str) -> None:
-    """
-    The one email this system sends: a new user's randomly generated
-    password, whatever their role. Subject + body only, per decision log
-    item #4 -- no HTML, no branding, nothing this system would need to
-    maintain going forward. `role_name` is a display label ("Admin",
-    "Developer", "Trainee"), not validated here -- callers pass a known-good
-    value from app.models.Role.
-    """
-    subject = f"Your GuardRail {role_name} account"
-    body = (
-        f"A {role_name} account has been created for you on GuardRail.\n\n"
-        f"Email: {to_email}\n"
-        f"Temporary password: {temp_password}\n\n"
-        "Log in and change this password as soon as possible. This is a "
-        "one-time message -- GuardRail does not store or resend it."
-    )
-
+def _deliver(to_email: str, subject: str, body: str) -> None:
+    """Send one plain subject+body email, or in dev mode (no SMTP_HOST) append it to dev_outbox."""
     if not _smtp_configured():
         logger.info(
             "DEV MODE (no SMTP_HOST configured) — email not actually sent: to=%s subject=%r",
@@ -101,5 +85,38 @@ def send_new_user_welcome_email(to_email: str, temp_password: str, role_name: st
                 server.login(settings.smtp_username, settings.smtp_password)
             server.send_message(msg)
     except Exception as e:
-        logger.error("Admin welcome email failed to send to %s: %s", to_email, e)
-        raise EmailSendError("failed to send admin welcome email") from e
+        logger.error("email failed to send to %s: %s", to_email, e)
+        raise EmailSendError("failed to send email") from e
+
+
+def send_new_user_welcome_email(to_email: str, temp_password: str, role_name: str) -> None:
+    """
+    A new user's randomly generated password, whatever their role. Subject + body only, per decision
+    log item #4 -- no HTML, no branding. `role_name` is a display label ("Admin", "Developer",
+    "Trainee"), not validated here -- callers pass a known-good value from app.models.Role.
+    """
+    subject = f"Your GuardRail {role_name} account"
+    body = (
+        f"A {role_name} account has been created for you on GuardRail.\n\n"
+        f"Email: {to_email}\n"
+        f"Temporary password: {temp_password}\n\n"
+        f"You must change this password the first time you log in, and it stops working "
+        f"after {settings.temp_password_ttl_hours} hours if it is not used. This is a "
+        "one-time message -- GuardRail does not store or resend it."
+    )
+    _deliver(to_email, subject, body)
+
+
+def send_password_reissue_email(to_email: str, temp_password: str) -> None:
+    """An Admin reissued this person's password (ADR-0026). Same shape as the welcome email."""
+    subject = "Your GuardRail password was reset"
+    body = (
+        "An Admin has reset your GuardRail password.\n\n"
+        f"Email: {to_email}\n"
+        f"Temporary password: {temp_password}\n\n"
+        f"You must change this password the first time you log in, and it stops working "
+        f"after {settings.temp_password_ttl_hours} hours if it is not used. All of your earlier "
+        "sessions have been signed out. This is a one-time message -- GuardRail does not store "
+        "or resend it."
+    )
+    _deliver(to_email, subject, body)

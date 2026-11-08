@@ -18,10 +18,12 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import blacklist_token, require_operator, require_operator_plane_logout
+from app.deps import blacklist_token, require_operator, require_operator_password_change_allowed, require_operator_plane_logout
+from app.errors import db_failed
 from app.email import EmailSendError, send_new_user_welcome_email
 from app.models import Operator, Role, Tenant, User
 from app.schemas import (
+    ChangePasswordRequest,
     AdminCreateRequest,
     AdminCreateResponse,
     LoginRequest,
@@ -30,8 +32,9 @@ from app.schemas import (
     TenantResponse,
     TokenResponse,
 )
+from app.password_policy import check_new_password
 from app.security import create_operator_token, generate_temp_password, hash_password, verify_password
-from app.user_provisioning import check_admin_cap_or_raise, check_username_available_or_raise
+from app.user_provisioning import check_admin_cap_or_raise, check_username_available_or_raise, temp_password_state
 
 router = APIRouter(prefix="/operator", tags=["operator"])
 
@@ -65,8 +68,46 @@ async def operator_login(body: LoginRequest, db: AsyncSession = Depends(get_db))
     operator = result.scalar_one_or_none()
     if not operator or not verify_password(body.password, operator.hashed_password):
         raise _BAD_CREDENTIALS
-    token = create_operator_token(operator.id)
-    return TokenResponse(access_token=token, plane="operator")
+    token = create_operator_token(operator.id, operator.session_version)
+    return TokenResponse(access_token=token, plane="operator", password_change_required=operator.must_change_password)
+
+
+@router.post("/change-password", response_model=TokenResponse)
+async def operator_change_password(
+    body: ChangePasswordRequest,
+    payload: dict = Depends(require_operator_password_change_allowed),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Operator-plane counterpart of POST /auth/change-password (ADR-0026): same rules, same effect
+    (older operator sessions are invalidated, a fresh token is returned). A user-plane token is
+    refused by the dependency's plane check, exactly like every other operator route.
+    """
+    operator = await db.get(Operator, uuid.UUID(payload["sub"]))
+    if not verify_password(body.current_password, operator.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "invalid_input", "detail": "the current password is incorrect"},
+        )
+    problems = check_new_password(
+        body.new_password, current=body.current_password, username=operator.username, email=operator.email
+    )
+    if problems:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "invalid_input", "detail": "the new password " + "; it ".join(problems)},
+        )
+    operator.hashed_password = hash_password(body.new_password)
+    operator.must_change_password = False
+    operator.session_version = Operator.session_version + 1
+    try:
+        await db.commit()
+    except DBAPIError as e:
+        await db.rollback()
+        raise db_failed() from e
+    await db.refresh(operator)
+    token = create_operator_token(operator.id, operator.session_version)
+    return TokenResponse(access_token=token, plane="operator", password_change_required=False)
 
 
 @router.post("/tenants", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
@@ -168,6 +209,7 @@ async def create_tenant_admin(
         email=body.email,
         hashed_password=hash_password(temp_password),
         role=Role.ADMIN.value,
+        **temp_password_state(),
     )
     db.add(user)
 

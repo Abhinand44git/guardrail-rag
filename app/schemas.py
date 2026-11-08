@@ -21,6 +21,15 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     plane: str
+    # True while the holder still has a temporary password: every endpoint except
+    # change-password and logout will refuse this token until they set a real one.
+    password_change_required: bool = False
+
+
+class ChangePasswordRequest(BaseModel):
+    # Only bounded here; the real rules live in app/password_policy.py so they are testable alone.
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
 
 
 # --- Operator-plane: tenant lifecycle (Phase 3) --------------------------

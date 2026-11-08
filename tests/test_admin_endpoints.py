@@ -678,6 +678,19 @@ async def test_full_chain_operator_to_admin_to_new_user():
             assert admin_login.status_code == 200, admin_login.text
             admin_token = admin_login.json()["access_token"]
 
+            # Batch C (ADR-0026): an account created with a temporary password is locked down until
+            # the first real password is set. Login still works and says so; everything else is 403.
+            assert admin_login.json()["password_change_required"] is True
+            blocked = await client.get("/admin/users", headers={"Authorization": f"Bearer {admin_token}"})
+            assert blocked.status_code == 403 and blocked.json()["detail"]["error"] == "password_change_required"
+            changed = await client.post(
+                "/auth/change-password",
+                json={"current_password": admin_temp_password, "new_password": "Correct horse battery 91"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert changed.status_code == 200, changed.text
+            admin_token = changed.json()["access_token"]  # the fresh token; the temporary-session one is now dead
+
             new_dev_email = f"chain-dev-{uuid.uuid4().hex[:8]}@fullchaintest.local"
             create_dev = await client.post(
                 "/admin/users",

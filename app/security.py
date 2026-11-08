@@ -55,22 +55,26 @@ def _encode(claims: dict) -> str:
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-def create_operator_token(operator_id: uuid.UUID) -> str:
+def create_operator_token(operator_id: uuid.UUID, session_version: int = 0) -> str:
     """
     Operator plane token. Deliberately carries NO tenant_id claim —
     this is what makes operators structurally unable to reach tenant-scoped
     routes: they fail JWT claim validation before any role gate is checked.
     """
-    return _encode({"sub": str(operator_id), "plane": "operator"})
+    # "sv" = the operator's session_version when this token was minted. require_operator refuses a
+    # token whose sv is behind the database's, which is how a password change revokes older sessions.
+    return _encode({"sub": str(operator_id), "plane": "operator", "sv": session_version})
 
 
-def create_user_token(user_id: uuid.UUID, tenant_id: uuid.UUID, role: int) -> str:
-    """Tenant-scoped user plane token. Always carries tenant_id + role."""
+def create_user_token(user_id: uuid.UUID, tenant_id: uuid.UUID, role: int, session_version: int = 0) -> str:
+    """Tenant-scoped user plane token. Always carries tenant_id + role (the role claim is
+    informational only: ADR-0024), plus "sv", the user's session_version at minting time."""
     return _encode({
         "sub": str(user_id),
         "plane": "user",
         "tenant_id": str(tenant_id),
         "role": role,
+        "sv": session_version,
     })
 
 

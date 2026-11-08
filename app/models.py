@@ -32,6 +32,9 @@ class Operator(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Password lifecycle (migration 0014, ADR-0026). See User for the meaning of each.
+    must_change_password: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -96,6 +99,17 @@ class User(Base):
     # is the entire point of the SDLC-memory feature. A deactivated Admin's slot
     # is freed against tenants.max_admins -- see migration 0008's trigger update.
     is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
+
+    # Password lifecycle (migration 0014, ADR-0026).
+    # must_change_password: true while the user holds a temporary (emailed) password. While it is
+    #   true every endpoint except change-password and logout refuses them (app/deps.py).
+    # temp_password_expires_at: an unused temporary password stops working for login after this.
+    # session_version: bumped whenever the password changes or is reissued. A token carries the
+    #   version it was minted with (claim "sv") and is refused once the user's version has moved on,
+    #   which revokes every older session at once without listing them.
+    must_change_password: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+    temp_password_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
