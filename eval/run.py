@@ -18,6 +18,12 @@ What it does, in plain terms:
   5. Saves a JSON record (versions, revision, numbers) to eval/results/ so the
      result can be cited later as evidence in an ADR.
 
+Hybrid column (Batch D, Round 1): every run also fuses the two rankings with Reciprocal Rank
+Fusion (RRF) and reports it next to BM25 and the model, plus which questions flip. Offline only:
+the app does not do this. The full rankings (RANKED_TOP_N, more than the corpus holds) of both methods are saved in the result
+JSON ("rankings"), so fusion variants can be re-scored later WITHOUT re-embedding (~4 minutes).
+Use  python -m eval.rescore <result.json>  for that.
+
 Not done here, on purpose: the app zero-pads vectors to 1536 dims before
 storing them. Zero-padding does not change cosine similarity, so the eval
 skips it; it only matters for storage cost.
@@ -50,6 +56,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parent))
 from eval.check_golden import BM25, K as DEFAULT_K, hit, load_chunks, norm  # noqa: E402
+from eval.chunkers import VARIANTS as CHUNKINGS, load_chunks_variant  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Per-model settings. WHY this exists: embedding models are trained to expect
@@ -128,6 +135,25 @@ def parts_found(order, chunks, anchors, k):
     return sum(any(norm(a) in t for t in top) for a in anchors)
 
 
+RRF_K = 60            # the constant from the original RRF paper; larger = flatter, smaller = top-heavy
+RANKED_TOP_N = 200    # how much of each ranking is saved. The frozen corpus has 112 chunks, so this is the whole
+                      # ranking, which makes eval.rescore exact (not an approximation from a truncated list)
+
+
+def rrf_order(model_order, bm25_order, rrf_k=RRF_K):
+    """Reciprocal Rank Fusion: score(chunk) = sum over lists of 1 / (rrf_k + rank in that list).
+    Uses only ranks, so BM25 scores and cosine scores need no common scale.
+    bm25_order must contain ONLY chunks with a keyword match (score > 0): a chunk that shares no
+    word with the question is not 'ranked' by keyword search at all (a database full-text search
+    would not return it either). Ties are broken by the model's rank."""
+    score = {}
+    for order in (model_order, bm25_order):
+        for r, i in enumerate(order, 1):
+            score[i] = score.get(i, 0.0) + 1.0 / (rrf_k + r)
+    pos = {i: r for r, i in enumerate(model_order)}
+    return sorted(score, key=lambda i: (-score[i], pos.get(i, len(pos))))
+
+
 def metrics(ranks, k):
     if not ranks:
         return 0.0, 0.0
@@ -144,11 +170,11 @@ def evaluate(embed_docs, embed_query, chunks, gold, k):
     """Core scoring. embed_docs(list[str]) -> matrix; embed_query(str) -> vector.
     Kept free of any model loading so it can be tested with stand-ins."""
     t0 = time.perf_counter()
-    C = embed_docs([c["text"] for c in chunks])
+    C = embed_docs([c.get("embed_text", c["text"]) for c in chunks])   # a header (variants A, C) is embedded but never matched against
     corpus_seconds = time.perf_counter() - t0
 
     bm = BM25([c["text"] for c in chunks])
-    rows, q_ms = [], []
+    rows, q_ms, rankings = [], [], {}
     for q in gold:
         t0 = time.perf_counter()
         qv = embed_query(q["question"])
@@ -157,38 +183,46 @@ def evaluate(embed_docs, embed_query, chunks, gold, k):
         order = list(np.argsort(-scores, kind="stable"))
         bsc = bm.scores(q["question"])
         border = sorted(range(len(chunks)), key=lambda i: -bsc[i])
+        border_matched = [i for i in border if bsc[i] > 0]          # keyword leg of the fusion
+        horder = rrf_order(order, border_matched)
         row = {"id": q["id"], "category": q["category"], "answerable": q["answerable"],
                "top1_score": float(scores[order[0]]), "top1_file": chunks[order[0]]["file"]}
         if q["answerable"]:
             row["rank"] = first_hit_rank(order, chunks, q["anchors"])
             row["bm25_rank"] = first_hit_rank(border, chunks, q["anchors"])
+            row["hybrid_rank"] = first_hit_rank(horder, chunks, q["anchors"])
             if q.get("parts"):
                 row["parts_total"] = len(q["anchors"])
                 row["parts_model"] = parts_found(order, chunks, q["anchors"], k)
                 row["parts_bm25"] = parts_found(border, chunks, q["anchors"], k)
+                row["parts_hybrid"] = parts_found(horder, chunks, q["anchors"], k)
         rows.append(row)
-    return rows, corpus_seconds, q_ms
+        ids = lambda o: [f"{chunks[i]['file']}#{chunks[i]['i']}" for i in o[:RANKED_TOP_N]]
+        rankings[q["id"]] = dict(model=ids(order), bm25=ids(border_matched), hybrid=ids(horder))
+    return rows, corpus_seconds, q_ms, rankings
 
 
 def report(rows, k):
     ans = [r for r in rows if r["answerable"]]
-    print(f"\n{'id':4} {'category':12} {'BM25 rank':>9} {'model rank':>10} {'top1 cos':>9}  top-1 chunk's file")
+    print(f"\n{'id':4} {'category':12} {'BM25 rank':>9} {'model rank':>10} {'hybrid':>7} {'top1 cos':>9}  top-1 chunk's file")
     for r in rows:
         if r["answerable"]:
             print(f"{r['id']:4} {r['category']:12} {str(r['bm25_rank'] or 'miss'):>9} "
-                  f"{str(r['rank'] or 'miss'):>10} {r['top1_score']:9.3f}  {r['top1_file']}")
+                  f"{str(r['rank'] or 'miss'):>10} {str(r['hybrid_rank'] or 'miss'):>7} {r['top1_score']:9.3f}  {r['top1_file']}")
         else:
-            print(f"{r['id']:4} {r['category']:12} {'-':>9} {'-':>10} {r['top1_score']:9.3f}  {r['top1_file']}   (unanswerable)")
+            print(f"{r['id']:4} {r['category']:12} {'-':>9} {'-':>10} {'-':>7} {r['top1_score']:9.3f}  {r['top1_file']}   (unanswerable)")
 
-    print(f"\nRecall@{k} and MRR   (BM25 keyword baseline  ->  this model)")
+    print(f"\nRecall@{k} and MRR   (BM25 keyword | this model | hybrid RRF)")
     cats = list(dict.fromkeys(r["category"] for r in ans)) + ["ALL"]
     summary = {}
     for cat in cats:
         sel = ans if cat == "ALL" else [r for r in ans if r["category"] == cat]
         br, bm_ = metrics([r["bm25_rank"] for r in sel], k)
         mr, mm = metrics([r["rank"] for r in sel], k)
-        summary[cat] = dict(n=len(sel), bm25_recall=br, bm25_mrr=bm_, model_recall=mr, model_mrr=mm)
-        print(f"  {cat:12} n={len(sel):2}   recall {br:4.0%} -> {mr:4.0%}    MRR {bm_:.2f} -> {mm:.2f}")
+        hr, hm = metrics([r["hybrid_rank"] for r in sel], k)
+        summary[cat] = dict(n=len(sel), bm25_recall=br, bm25_mrr=bm_, model_recall=mr, model_mrr=mm,
+                            hybrid_recall=hr, hybrid_mrr=hm)
+        print(f"  {cat:12} n={len(sel):2}   recall {br:4.0%} | {mr:4.0%} | {hr:4.0%}    MRR {bm_:.2f} | {mm:.2f} | {hm:.2f}")
     print("  (one question = about "
           f"{100 / len(ans):.1f} points of recall; treat gaps smaller than ~10 points as noise)")
 
@@ -237,6 +271,39 @@ def truncate_vectors(x, d):
     return _unit(_layer_norm(x)[..., :d])
 
 
+def hybrid_report(rows, k, rrf_k=RRF_K):
+    """Which questions does fusion help or hurt? Answers the Round-3 question directly:
+    does hybrid beat the better single method, and does it LOSE any answer that either
+    method found on its own?"""
+    ans = [r for r in rows if r["answerable"]]
+    ok = lambda rk: bool(rk and rk <= k)
+    n = len(ans)
+    bm = {r["id"] for r in ans if ok(r["bm25_rank"])}
+    md = {r["id"] for r in ans if ok(r["rank"])}
+    hy = {r["id"] for r in ans if ok(r["hybrid_rank"])}
+    either = bm | md
+    best = max(len(bm), len(md))
+    print(f"\n=== Hybrid (RRF, constant {rrf_k}) at recall@{k}, {n} answerable questions (1 question = {100 / n:.1f} points) ===")
+    print(f"  BM25 {len(bm)}/{n} ({len(bm) / n:.0%})   model {len(md)}/{n} ({len(md) / n:.0%})   "
+          f"either {len(either)}/{n} ({len(either) / n:.0%})   HYBRID {len(hy)}/{n} ({len(hy) / n:.0%})")
+    print(f"  hybrid vs the better single method: {len(hy) - best:+d} question(s) = {100 * (len(hy) - best) / n:+.1f} points")
+    lost = sorted(either - hy)
+    gained = sorted(hy - md)
+    print(f"  LOST by fusion (found by BM25 or model alone, not by hybrid): {', '.join(lost) or 'none'}")
+    print(f"  gained over the model alone: {', '.join(gained) or 'none'}")
+    print(f"  gained over BM25 alone:      {', '.join(sorted(hy - bm)) or 'none'}")
+    print(f"  neither single method finds: {', '.join(sorted(r['id'] for r in ans if r['id'] not in either)) or 'none'}"
+          f"   (hybrid finds: {', '.join(sorted(hy - either)) or 'none of them'})")
+    print(f"  rank of first correct chunk, only where BM25 / model / hybrid differ in hit-or-miss status:")
+    print(f"  {'id':5} {'BM25':>6} {'model':>6} {'hybrid':>7}")
+    for r in ans:
+        if len({ok(r['bm25_rank']), ok(r['rank']), ok(r['hybrid_rank'])}) > 1:
+            f = lambda rk: (str(rk) if rk else "miss")
+            print(f"  {r['id']:5} {f(r['bm25_rank']):>6} {f(r['rank']):>6} {f(r['hybrid_rank']):>7}")
+    print("  (Offline measurement only. The app's retrieval is unchanged. RRF here is Python over the whole "
+          "frozen corpus; a Postgres full-text keyword leg would rank differently, see the Batch D handoff, option A.)")
+
+
 def summarize(rows, k):
     ans = [r for r in rows if r["answerable"]]
     cats = list(dict.fromkeys(r["category"] for r in ans)) + ["ALL"]
@@ -245,7 +312,9 @@ def summarize(rows, k):
         sel = ans if cat == "ALL" else [r for r in ans if r["category"] == cat]
         br, bm_ = metrics([r["bm25_rank"] for r in sel], k)
         mr, mm = metrics([r["rank"] for r in sel], k)
-        out[cat] = dict(n=len(sel), bm25_recall=br, bm25_mrr=bm_, model_recall=mr, model_mrr=mm)
+        hr, hm = metrics([r["hybrid_rank"] for r in sel], k)
+        out[cat] = dict(n=len(sel), bm25_recall=br, bm25_mrr=bm_, model_recall=mr, model_mrr=mm,
+                        hybrid_recall=hr, hybrid_mrr=hm)
     return out
 
 
@@ -290,6 +359,10 @@ def main():
                     help="allow the model repo's own Python code to run (nomic needs this; only for models you trust)")
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--golden", default="golden_set.json",
+                    help="golden set file(s) inside eval/, comma-separated to combine (e.g. golden_set.json,golden_set_v3.json)")
+    ap.add_argument("--chunking", default="current", choices=CHUNKINGS,
+                    help="Batch D Round 5: which chunking strategy to evaluate (see eval/chunkers.py); default = today's")
     ap.add_argument("--no-save", action="store_true")
     ap.add_argument("--dims", default=None,
                     help="comma list of vector widths to also score, e.g. 768,512,256,128 (Matryoshka models only)")
@@ -317,9 +390,15 @@ def main():
     print("environment:", ", ".join(f"{k}={v}" for k, v in ver.items() if k in
           ("python", "sentence-transformers", "transformers", "torch", "huggingface_hub", "numpy")))
 
-    gold = json.loads((ROOT / "golden_set.json").read_text(encoding="utf-8"))["questions"]
-    chunks = load_chunks()
-    print(f"corpus: {len(chunks)} chunks; {len(gold)} questions; model: {a.model}")
+    gold = []
+    for name in a.golden.split(","):
+        gold += json.loads((ROOT / name.strip()).read_text(encoding="utf-8"))["questions"]
+    ids = [q["id"] for q in gold]
+    if len(ids) != len(set(ids)):
+        raise SystemExit("duplicate question ids across the golden files: " + ", ".join(sorted({i for i in ids if ids.count(i) > 1})))
+    chunks = load_chunks_variant(a.chunking)
+    wc = sorted(len(c["text"].split()) for c in chunks)
+    print(f"corpus: {len(chunks)} chunks (chunking: {a.chunking}, median {wc[len(wc) // 2]} words, max {wc[-1]}); {len(gold)} questions; model: {a.model}")
     print(f"prefixes: doc={cfg['doc_prefix']!r} query={cfg['query_prefix']!r}")
 
     t0 = time.perf_counter()
@@ -345,7 +424,7 @@ def main():
     msl = getattr(model, "max_seq_length", None)
     trunc = None
     if msl and getattr(model, "tokenizer", None) is not None:
-        lens = [len(model.tokenizer(c["text"], add_special_tokens=True)["input_ids"]) for c in chunks]
+        lens = [len(model.tokenizer(c.get("embed_text", c["text"]), add_special_tokens=True)["input_ids"]) for c in chunks]
         trunc = sum(1 for n in lens if n > msl)
         print(f"model window: {msl} tokens | real token length of chunks: median {int(statistics.median(lens))}, "
               f"max {max(lens)} | chunks that get cut off: {trunc}/{len(chunks)}")
@@ -373,8 +452,9 @@ def main():
 
     variants = None
     if not keep_raw:
-        rows, corpus_s, q_ms = evaluate(embed_docs, embed_query, chunks, gold, a.k)
+        rows, corpus_s, q_ms, rankings = evaluate(embed_docs, embed_query, chunks, gold, a.k)
         summary = report(rows, a.k)
+        hybrid_report(rows, a.k)
     else:
         raw_docs, raw_q = {}, {}
 
@@ -402,13 +482,16 @@ def main():
                 too_big = [d for d in dims if d > full_dim]
                 if too_big:
                     sys.exit(f"--dims {too_big} are wider than the model's {full_dim} dimensions.")
-            r_, cs_, qm_ = evaluate(lambda texts, fn=fn: fn(cached_docs(texts)),
+            r_, cs_, qm_, rk_ = evaluate(lambda texts, fn=fn: fn(cached_docs(texts)),
                                     lambda t, fn=fn: fn(cached_query(t)), chunks, gold, a.k)
             if corpus_s is None:           # only the first pass actually embedded anything
                 corpus_s, q_ms = embed_seconds, qm_
             variants.append((label, r_, summarize(r_, a.k)))
+            if label == "plain":
+                rankings = rk_             # the control's rankings are the ones saved
         rows, summary = variants[0][1], variants[0][2]
         report(rows, a.k)                  # full per-question detail for the control
+        hybrid_report(rows, a.k)
         width_report(variants, a.k)
 
     timing = dict(model_load_s=round(load_s, 2), corpus_embed_s=round(corpus_s, 2),
@@ -423,9 +506,10 @@ def main():
         out = ROOT / "results"
         out.mkdir(exist_ok=True)
         name = re.sub(r"[^A-Za-z0-9_.-]+", "_", a.model) + datetime.now().strftime("_%Y%m%d_%H%M%S") + ".json"
-        (out / name).write_text(json.dumps(dict(model=a.model, k=a.k, config=cfg, revision=revision,
+        (out / name).write_text(json.dumps(dict(model=a.model, k=a.k, golden=a.golden, chunking=a.chunking, config=cfg, revision=revision,
                                                 requested_revision=a.revision, versions=ver, truncated_chunks=trunc,
                                                 timing=timing, summary=summary, rows=rows,
+                                                rrf_k=RRF_K, rankings=rankings,
                                                 widths=None if variants is None else
                                                 {l: dict(summary=sm, rows=rw) for l, rw, sm in variants}), indent=1),
                                    encoding="utf-8")

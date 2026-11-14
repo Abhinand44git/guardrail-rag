@@ -5,8 +5,9 @@ Rewrite this page each phase. The Decision Log is append-only history; decisions
 **Last verified:** 2026-10-28, in the real Docker stack (compose, `pgvector/pgvector:pg16` image running pgvector 0.8.x, embedder container healthy, new port binding `127.0.0.1:5433->5432`).
 **How:** on a **fresh volume**: `alembic upgrade head` (`-> 0001` through `0013`, clean), `python -m scripts.seed` (seeded), `docker compose exec api pytest -q` → **319 passed, 3 skipped** (322 tests; the three skips are the tests that read `docker-compose.yml` or the Dockerfile, which are not copied into the API image). The same suite also passed, once, against an **existing** database that was still at revision `0003` with old seed rows, which upgraded through `0013` without error. Earlier the same suite passed 322 on bare-metal Postgres 16 + pgvector 0.6.0 (2026-10-25: the 215 from before Phase 5, plus 107 new or rewritten: 87 in `test_retrieve_endpoint.py` and `test_project_memory_endpoints.py`, 8 in `test_role_is_read_from_the_database.py`, 5 in `test_migration_0013.py`, 6 in `test_schema.py`, 1 compose test).
 **After the memory edit/delete increment** (`PATCH` / `DELETE /project-memory/{id}`, 15 more tests), the image was rebuilt and the suite re-run in Docker the same day: **334 passed, 3 skipped** (337 tests). Bare-metal Postgres 16 + pgvector 0.6.0: 337 passed.
-**After Batch C** (password lifecycle, ADR-0026; migration `0014`; 57 more tests): 394 tests, all passing on bare-metal Postgres 16 + pgvector 0.6.0 (2026-10-28). Not yet re-run in Docker, where it should give 391 passed, 3 skipped.
-**Not exercised in Docker:** `POST /retrieve` and `POST /project-memory` through the real embedding model (the tests use a stand-in embedder behind the same interface); everything else Phase 5 added is covered by the run above.
+**After Batch C** (password lifecycle, ADR-0026; migration `0014`; 57 more tests): 394 tests, all passing on bare-metal Postgres 16 + pgvector 0.6.0 (2026-10-28). Re-run in Docker on rebuilt images (2026-11-07): migration `0014` applied cleanly and **391 passed, 3 skipped**.
+**Real model, real routes (2026-11-07):** `python -m scripts.smoke_real_model` passed **30/30** in Docker (model `nomic-ai/nomic-embed-text-v1.5`, 768 dims, non-zero stored vectors, role and tenant filtering across Admin, Developer and Trainee). Measured: ingest 2.65 s per chunk, embedding one question 118 ms, `/retrieve` end to end 160 ms (Admin, k=20), cold start 2.7 s. `scripts.demo_retrieve` (host venv) also ran: the Trainee never sees the salary document the Admin sees.
+**After Batch D** (evaluation tooling only, no app change): `tests/test_eval_rrf.py` and `tests/test_eval_decide.py`, 21 pure-logic tests, verified in a sandbox without a database and each rule mutation-tested. Inside the API image they are **skipped** (`eval/` is excluded by `.dockerignore`), so the Docker run should now give 391 passed, 5 skipped; run them on the host with `python -m pytest tests/test_eval_rrf.py tests/test_eval_decide.py -q`. Not yet re-run after this change.
 
 ## What exists (the route table is pinned by `tests/test_api_surface.py`)
 
@@ -41,12 +42,14 @@ Seven tables plus `alembic_version` (vectors are `vector(768)`, no padding: [ADR
 
 Golden set v2 (`eval/golden_set.json`): **35 questions, 28 answerable and 7 not**. The project owner rewrote five of the assistant's questions (P1, P3, P4, P5, P8) and added nine of their own (Y8–Y12, U4–U7); the original set is kept as `golden_set_v1.json`. Anchors were verified against the chunked corpus (`python -m eval.check_golden`: all found). **BM25 baseline on v2:** recall@5 43%, recall@10 64%, essentially unchanged from v1 (43% / 65%): rewording the five questions did not break keyword search, so leakage from the assistant's wording was a small effect. **nomic on v2 (run 2026-10-25, revision `e9b6763…`):** recall@10 **75%** (BM25 64%), MRR **0.49** (BM25 0.38): about three questions better, right at the harness's own noise line (one question = 3.6 points). Nomic ranks better and is far better on broad and code questions; BM25 is better on paraphrase (partly because the assistant wrote those questions with the docs in view). Together they find 24 of 28 answerable questions (86%): each finds answers the other misses, which is the evidence for hybrid search (#6). Still missed by both: P5, P7, C2, Y3. A similarity cut-off cannot detect "no answer" (unanswerable up to 0.713; correct rank-1 answers as low as 0.610). **Width test** (same vectors cut to 768/512/256/128): a tie within noise, so storage stays at 768 ([ADR-0019](adr/0019-vectors-768-no-padding.md)). Caveats: 35 questions, a 112-chunk corpus that flatters scores, and the corpus is the pre-ADR snapshot (ask nothing about the embedder container, the blacklist purge, or anything built after it). P4, P5, P8 are still misses: worth hand-judging whether the top chunk is a valid answer ([ADR-0007](adr/0007-eval-harness.md)).
 
+**Batch D, hybrid retrieval (closed 2026-11-14, [ADR-0027](adr/0027-hybrid-retrieval-not-adopted.md)):** golden set v3 (`eval/golden_set_v3.json`) adds **30 questions, 25 answerable and 5 not** (the owner wrote 10, the assistant 20; the assistant's were written with the corpus visible, so they are not blind). A decision rule was fixed before the v3 results existed and is applied by `python -m eval.decide`. On v2 + v3 (53 answerable) at recall@5/@10: BM25 30/39, nomic 35/39, **hybrid (reciprocal-rank fusion) 37/42**; MRR 0.449 / 0.482 / 0.540. Hybrid raised ranking quality but missed the rule's +5 points at k=5 (+3.8) and was one question behind BM25 on v3 alone at k=10 (20 vs 21), so **it was not built**; `/retrieve` is unchanged. `eval.run --golden a.json,b.json` combines sets; `eval.rescore` re-scores a saved run (it stores full rankings) without re-embedding. A similarity cut-off still cannot detect "no answer" on v3 (unanswerable up to 0.697, correct rank-1 answers from 0.636).
+
 ## Known gaps, by review number
 
 | # | Gap | State |
 |---|---|---|
 | 5 | Zero-padding to 1536 doubles storage and scan cost | **Fixed**: 768, no padding, migration `0013` ([ADR-0019](adr/0019-vectors-768-no-padding.md)) |
-| 6 | Dense-only search; BM25 and nomic each find answers the other misses | **Evidence in** (union 86% vs 75% / 64%); hybrid not built: Batch D |
+| 6 | Dense-only search; BM25 and nomic each find answers the other misses | **Evaluated, not built** (2026-11-14, [ADR-0027](adr/0027-hybrid-retrieval-not-adopted.md)): failed the pre-agreed rule at k=5 and on the v3 hold-out; revisit only with a pre-specified variant on fresh questions |
 | 7 | Fixed-size chunking, no file path or title in the chunk | Not decided, after the golden questions |
 | 8 | "Tokens" were really words | **Fixed** by renaming; chunks identical ([ADR-0015](adr/0015-words-not-tokens.md)). Real-token sizing belongs with #7 |
 | 9 | Emailed temporary passwords, no forced change | **Fixed 2026-10-28** ([ADR-0026](adr/0026-password-lifecycle.md)): forced change, 72-hour expiry, change-password, Admin reissue, a change signs out every other session |
@@ -64,19 +67,20 @@ Golden set v2 (`eval/golden_set.json`): **35 questions, 28 answerable and 7 not*
 
 1. Replace your live docs with the v3.0 copies delivered 2026-10-28 (`GuardRail_RAG.md`, `GuardRail_RAG_Analysis.md`, `GuardRail_RAG_Design.md`; they remove `/query` with generation, `POST /auth/refresh`, the 4,000-token budget and the 1536-wide vectors) and paste in the corrected project prompt. Delete the stale `HF_*` lines from your local `.env`.
 2. Set a real `POSTGRES_PASSWORD` in `.env` (and `DATABASE_URL` to match).
-3. Optional: one real `POST /retrieve` and `POST /project-memory` call through the real model. The Docker stack and migration `0013` are verified; this last piece is not.
-4. Next batch: D (hybrid retrieval quality). Batch C (password lifecycle) is done.
+3. Hand-judge P4, P5 and P8 (v2 misses): if the top chunk is a valid answer that the anchor text does not recognise, the key needs fixing and the v2 numbers shift.
+4. Commit the new eval files and results (`eval/golden_set_v3.json`, `eval/decide.py`, `eval/rescore.py`, `eval/results/*20261114*.json`, ADR-0027).
+5. Next: Phase 6 (hardening). Batch D (hybrid retrieval) is closed with a "not built" result; Batch C is done.
 
 ## Not yet verified anywhere
 
-`/retrieve` and `POST /project-memory` through the real model; embedder memory *during a large ingest* (only idle memory was measured); the production `CMD` with `--workers 2` under Docker (compose overrides it with one `--reload` worker); real SMTP (only the dev outbox is exercised).
+embedder memory *during a large ingest* (only idle memory was measured); the production `CMD` with `--workers 2` under Docker (compose overrides it with one `--reload` worker); real SMTP (only the dev outbox is exercised).
 
 ## Re-verify
 
 ```bash
 docker compose up --build -d && docker compose exec api alembic upgrade head
 docker compose exec api python -m scripts.seed
-docker compose exec api pytest -q                              # expect 391 passed, 3 skipped
+docker compose exec api pytest -q                              # expect 391 passed, 5 skipped (3 compose/Dockerfile tests + the 2 eval test files; eval/ is not in the image)
 docker compose exec api python -m scripts.smoke_real_model     # real model, real HTTP routes, all roles: 30 checks
 python -m scripts.demo_retrieve                                # 30-second demo from your own machine (needs httpx)
 docker compose exec api test -f /app/.env && echo LEAK || echo env-absent

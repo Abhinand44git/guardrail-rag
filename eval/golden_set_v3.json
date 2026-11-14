@@ -1,0 +1,317 @@
+{
+ "_about": "v3 (Batch D Round 2). Same rules as v2: a retrieval hit = any top-k chunk whose text contains ANY anchor (case-insensitive, whitespace-collapsed); parts=true means the anchors are different pieces of ONE answer. v2 is untouched. CAUTION, written into the file on purpose: questions with author='assistant' were written by the assistant WITH the corpus visible, so they are NOT blind and probably flatter keyword search; author='owner' questions were written by the project owner from memory. The answer key (anchors) was written before any retrieval was run and was checked only for presence in the corpus, never against a ranking. The corpus is the frozen older snapshot, so answers follow the corpus, not the live docs (e.g. it says Developers see only their own notes; the live system changed that in ADR-0023). Owner questions NOT scored because they are judgment or advice and have no corpus answer beyond partial mentions: 'is guardrail of any use in the professional or business world...' and 'what things in this project can the developer use during a technical or hr interview'. P20 (owner) is ambiguous: 'notes they ingested' mixes notes and documents; it is anchored on the default-Admin-only evidence for new documents.",
+ "questions": [
+  {
+   "id": "P11",
+   "category": "paraphrase",
+   "answerable": true,
+   "question": "What stops an admin from bringing back the wrong ex-employee when reactivating accounts?",
+   "anchors": [
+    "deliberate speed bump"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "P12",
+   "category": "paraphrase",
+   "answerable": true,
+   "question": "Why is a deleted document really erased from the database but a removed user is not?",
+   "anchors": [
+    "attribution history a hard delete",
+    "Hard delete, unlike DELETE /admin/users"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "P13",
+   "category": "paraphrase",
+   "answerable": true,
+   "question": "How was it decided that company admins get told when the shared AI key stops working?",
+   "anchors": [
+    "Decided: Option B",
+    "always write the in-app notification and send the email"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "P14",
+   "category": "paraphrase",
+   "answerable": true,
+   "question": "Why isn't the extra re-login check, like on GitHub, used before restoring a user's access?",
+   "anchors": [
+    "sudo window"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "P15",
+   "category": "paraphrase",
+   "answerable": true,
+   "question": "My database login says the password is wrong even though it is right, what could be the cause on my machine?",
+   "anchors": [
+    "second, independent PostgreSQL installation"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "P16",
+   "category": "paraphrase",
+   "answerable": true,
+   "question": "I made new secrets but kept my old docker data, what breaks?",
+   "anchors": [
+    "leaves old data undecryptable"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "P17",
+   "category": "paraphrase",
+   "answerable": true,
+   "question": "Why is an older version of the password hashing library pinned?",
+   "anchors": [
+    "bcrypt==4.0.1"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "P18",
+   "category": "paraphrase",
+   "answerable": true,
+   "question": "Why can turning text into numbers not be allowed to freeze every other request on the server?",
+   "anchors": [
+    "block this whole worker's event loop"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "P19",
+   "category": "paraphrase",
+   "answerable": true,
+   "question": "Why was a free hosted database picked over stronger key custody for the first deployment?",
+   "anchors": [
+    "matches current skill level"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "P20",
+   "category": "paraphrase",
+   "answerable": true,
+   "question": "why can't a developer read the notes they ingested?",
+   "anchors": [
+    "Fail closed, not open",
+    "fail closed at creation"
+   ],
+   "author": "owner"
+  },
+  {
+   "id": "I5",
+   "category": "identifier",
+   "answerable": true,
+   "question": "generate_temp_password",
+   "anchors": [
+    "def generate_temp_password"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "I6",
+   "category": "identifier",
+   "answerable": true,
+   "question": "What does DecryptionError mean?",
+   "anchors": [
+    "class DecryptionError"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "I7",
+   "category": "identifier",
+   "answerable": true,
+   "question": "require_operator",
+   "anchors": [
+    "async def require_operator"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "I8",
+   "category": "identifier",
+   "answerable": true,
+   "question": "What arguments does send_new_user_welcome_email take?",
+   "anchors": [
+    "def send_new_user_welcome_email"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "C5",
+   "category": "code",
+   "answerable": true,
+   "question": "Where does the code decide whether to really send an email or only log it?",
+   "anchors": [
+    "return bool(settings.smtp_host)"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "C6",
+   "category": "code",
+   "answerable": true,
+   "question": "How do neighbouring pieces overlap so a fact at the edge of one is not lost?",
+   "anchors": [
+    "so a fact sitting right at a chunk",
+    "def _chunk_by_words"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "C7",
+   "category": "code",
+   "answerable": true,
+   "question": "How does the code make a smaller vector fit the wider storage column?",
+   "anchors": [
+    "def zero_pad"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "C8",
+   "category": "code",
+   "answerable": true,
+   "question": "Which function lets only an Admin change how visible an uploaded document is?",
+   "anchors": [
+    "async def reclassify_document"
+   ],
+   "author": "assistant"
+  },
+  {
+   "id": "Y13",
+   "category": "broad",
+   "answerable": true,
+   "question": "what is the main purpose behind making guardrail?",
+   "anchors": [
+    "Employees already paste private company docs and code into AI tools",
+    "A security layer that sits between a company's private documents/codebases"
+   ],
+   "author": "owner"
+  },
+  {
+   "id": "Y14",
+   "category": "broad",
+   "answerable": true,
+   "question": "what tiers of security can guardrail provide?",
+   "anchors": [
+    "Fixed roles only: Admin (1) / Developer (2) / Trainee (3)",
+    "Two identity planes: `operators`",
+    "Strict tenant isolation"
+   ],
+   "author": "owner",
+   "parts": true
+  },
+  {
+   "id": "Y15",
+   "category": "broad",
+   "answerable": true,
+   "question": "is chunking and retrieval done based on word limit for both code and documents or individuals paragraphs and functions are cleaved cleanly for chunking?",
+   "anchors": [
+    "so a chunk never splits a line in half",
+    "def _chunk_by_words"
+   ],
+   "author": "owner",
+   "parts": true
+  },
+  {
+   "id": "Y16",
+   "category": "broad",
+   "answerable": true,
+   "question": "Regarding the system design, which areas is the guardrail app lacking?",
+   "anchors": [
+    "deliberately not designed here",
+    "Key rotation: still explicitly out of scope",
+    "Async ingestion explicitly considered and deliberately deferred"
+   ],
+   "author": "owner",
+   "parts": true
+  },
+  {
+   "id": "Y17",
+   "category": "broad",
+   "answerable": true,
+   "question": "how does the project keep passwords and secret keys safe?",
+   "anchors": [
+    "Static app secrets",
+    "Fernet-encrypted before writing",
+    "def generate_temp_password"
+   ],
+   "author": "assistant",
+   "parts": true
+  },
+  {
+   "id": "Y18",
+   "category": "broad",
+   "answerable": true,
+   "question": "what does the app do to email new users their login?",
+   "anchors": [
+    "send-or-rollback",
+    "def send_new_user_welcome_email",
+    "return bool(settings.smtp_host)"
+   ],
+   "author": "assistant",
+   "parts": true
+  },
+  {
+   "id": "Y19",
+   "category": "broad",
+   "answerable": true,
+   "question": "how do documents get removed or have their visibility changed, and who is allowed to do it?",
+   "anchors": [
+    "Hard delete, unlike DELETE /admin/users",
+    "async def reclassify_document",
+    "sensitivity-update authority"
+   ],
+   "author": "assistant",
+   "parts": true
+  },
+  {
+   "id": "U8",
+   "category": "unanswerable",
+   "answerable": false,
+   "question": "what happens when an intern is able to access the admin controls due to a system glitch?",
+   "anchors": [],
+   "author": "owner"
+  },
+  {
+   "id": "U9",
+   "category": "unanswerable",
+   "answerable": false,
+   "question": "can guardrail actually work like it is proposed?",
+   "anchors": [],
+   "author": "owner"
+  },
+  {
+   "id": "U10",
+   "category": "unanswerable",
+   "answerable": false,
+   "question": "is this portfolio piece also a engineering failure from the point of view of product based or service based companies?",
+   "anchors": [],
+   "author": "owner"
+  },
+  {
+   "id": "U11",
+   "category": "unanswerable",
+   "answerable": false,
+   "question": "should this portfolio piece be further optimized into a vs code extension?",
+   "anchors": [],
+   "author": "owner"
+  },
+  {
+   "id": "U12",
+   "category": "unanswerable",
+   "answerable": false,
+   "question": "should a frontend be built now that i have learnt html, css, javascript and started learning react?",
+   "anchors": [],
+   "author": "owner"
+  }
+ ]
+}
