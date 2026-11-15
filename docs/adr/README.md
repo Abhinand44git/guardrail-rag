@@ -37,5 +37,6 @@ One short file per decision: context, decision, consequences, and how it is chec
 | 0025 | [Memory entries can be reclassified or deleted by Admins only; Trainees read but do not write](0025-memory-edit-admin-only-trainees-read-only.md) | Accepted |
 | 0026 | [Temporary passwords must be changed, expire, and a change signs out every other session](0026-password-lifecycle.md) | Accepted |
 | 0027 | [Hybrid retrieval (keyword + vector) was evaluated and is not being built](0027-hybrid-retrieval-not-adopted.md) | Accepted |
+| 0028 | [Content-aware chunking and chunk headers were evaluated and are not being adopted](0028-chunking-variants-not-adopted.md) | Accepted |
 
 **Template:** copy any file above. Keep it under one page.

@@ -95,7 +95,7 @@ Passing tests proves correctness, not usefulness, so [`eval/`](eval/) holds a ha
 python -m eval.run --model nomic-ai/nomic-embed-text-v1.5 --k 10
 ```
 
-`--golden golden_set.json,golden_set_v3.json` scores several question sets in one pass; `python -m eval.rescore <result.json>` re-scores a saved run with a different fusion setting without re-embedding. Add `--dims 768,512,256,128` to also score the same vectors cut to those widths (one embedding pass); this is how the 768-wide storage decision was made ([ADR-0019](docs/adr/0019-vectors-768-no-padding.md)).
+`--golden golden_set.json,golden_set_v3.json` scores several question sets in one pass; `--chunking A_header|B_structure|C_structure_header` scores an experimental chunking strategy (the app's own chunking was kept: [ADR-0028](docs/adr/0028-chunking-variants-not-adopted.md)); `python -m eval.rescore <result.json>` re-scores a saved run with a different fusion setting without re-embedding. Add `--dims 768,512,256,128` to also score the same vectors cut to those widths (one embedding pass); this is how the 768-wide storage decision was made ([ADR-0019](docs/adr/0019-vectors-768-no-padding.md)).
 
 First results on the original 26 questions (golden set v1, mostly written by the AI assistant that helped build the project; small sample, read with care): at k=5, recall rose from 43% (BM25) to 61% (embeddings); at k=10 they tie at 65%, so the embeddings' real advantage is ranking the right chunk higher. Each method finds answers the other misses, which prompted a test of hybrid search. The set has since grown to 35 questions, with five rewritten and nine added by the project owner in their own words (`eval/golden_set.json`; the original is kept as `golden_set_v1.json`). On that set nomic reaches 75% recall@10 against BM25's 64%. A further 30-question set (`golden_set_v3.json`) and a decision rule written in advance (`python -m eval.decide`) were then used to test hybrid search: it failed the rule, so it was **not built** ([ADR-0027](docs/adr/0027-hybrid-retrieval-not-adopted.md)). Details and caveats: [ADR-0007](docs/adr/0007-eval-harness.md).
 
@@ -153,3 +153,5 @@ It saves a confidential document (Admin-only), a harmless one and a note, then a
 ## License
 
 No license has been chosen yet, so by default all rights are reserved. Add a `LICENSE` file (for example MIT) if you want others to reuse the code.
+
+

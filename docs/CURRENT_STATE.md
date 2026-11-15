@@ -7,7 +7,7 @@ Rewrite this page each phase. The Decision Log is append-only history; decisions
 **After the memory edit/delete increment** (`PATCH` / `DELETE /project-memory/{id}`, 15 more tests), the image was rebuilt and the suite re-run in Docker the same day: **334 passed, 3 skipped** (337 tests). Bare-metal Postgres 16 + pgvector 0.6.0: 337 passed.
 **After Batch C** (password lifecycle, ADR-0026; migration `0014`; 57 more tests): 394 tests, all passing on bare-metal Postgres 16 + pgvector 0.6.0 (2026-10-28). Re-run in Docker on rebuilt images (2026-11-07): migration `0014` applied cleanly and **391 passed, 3 skipped**.
 **Real model, real routes (2026-11-07):** `python -m scripts.smoke_real_model` passed **30/30** in Docker (model `nomic-ai/nomic-embed-text-v1.5`, 768 dims, non-zero stored vectors, role and tenant filtering across Admin, Developer and Trainee). Measured: ingest 2.65 s per chunk, embedding one question 118 ms, `/retrieve` end to end 160 ms (Admin, k=20), cold start 2.7 s. `scripts.demo_retrieve` (host venv) also ran: the Trainee never sees the salary document the Admin sees.
-**After Batch D** (evaluation tooling only, no app change): `tests/test_eval_rrf.py` and `tests/test_eval_decide.py`, 21 pure-logic tests, verified in a sandbox without a database and each rule mutation-tested. Inside the API image they are **skipped** (`eval/` is excluded by `.dockerignore`), so the Docker run should now give 391 passed, 5 skipped; run them on the host with `python -m pytest tests/test_eval_rrf.py tests/test_eval_decide.py -q`. Not yet re-run after this change.
+**After Batch D** (evaluation tooling only, no app change): `tests/test_eval_rrf.py`, `test_eval_decide.py`, `test_eval_chunkers.py` and `test_eval_decide_chunking.py`, 48 pure-logic tests, verified in a sandbox without a database and each rule mutation-tested. Inside the API image they are **skipped** (`eval/` is excluded by `.dockerignore`), so the Docker run should now give 391 passed, 7 skipped; run them on the host with `python -m pytest tests/test_eval_rrf.py tests/test_eval_decide.py tests/test_eval_chunkers.py tests/test_eval_decide_chunking.py -q`. Not yet re-run in Docker after this change.
 
 ## What exists (the route table is pinned by `tests/test_api_surface.py`)
 
@@ -44,13 +44,15 @@ Golden set v2 (`eval/golden_set.json`): **35 questions, 28 answerable and 7 not*
 
 **Batch D, hybrid retrieval (closed 2026-11-14, [ADR-0027](adr/0027-hybrid-retrieval-not-adopted.md)):** golden set v3 (`eval/golden_set_v3.json`) adds **30 questions, 25 answerable and 5 not** (the owner wrote 10, the assistant 20; the assistant's were written with the corpus visible, so they are not blind). A decision rule was fixed before the v3 results existed and is applied by `python -m eval.decide`. On v2 + v3 (53 answerable) at recall@5/@10: BM25 30/39, nomic 35/39, **hybrid (reciprocal-rank fusion) 37/42**; MRR 0.449 / 0.482 / 0.540. Hybrid raised ranking quality but missed the rule's +5 points at k=5 (+3.8) and was one question behind BM25 on v3 alone at k=10 (20 vs 21), so **it was not built**; `/retrieve` is unchanged. `eval.run --golden a.json,b.json` combines sets; `eval.rescore` re-scores a saved run (it stores full rankings) without re-embedding. A similarity cut-off still cannot detect "no answer" on v3 (unanswerable up to 0.697, correct rank-1 answers from 0.636).
 
+**Batch D, Round 5, chunking (closed 2026-11-14, [ADR-0028](adr/0028-chunking-variants-not-adopted.md)):** three variants (`eval/chunkers.py`: a path header on today's chunks; cuts by function/heading; both) were scored on the same 53 answerable questions by a rule committed before any result (`eval/round5_plan.md`, `python -m eval.decide_chunking`; `eval.run --chunking <variant>`). Nomic recall@5/@10: today's 35/39, header 36/40, structure 33/40, both 36/40, so none reached the required +5 points; the structural cuts also hurt broad questions. Ranking improved (MRR 0.48 to 0.55-0.58, rank-1 hits 18 to 24-25 of 53) without finding more answers. **No change to `app/chunking.py`.**
+
 ## Known gaps, by review number
 
 | # | Gap | State |
 |---|---|---|
 | 5 | Zero-padding to 1536 doubles storage and scan cost | **Fixed**: 768, no padding, migration `0013` ([ADR-0019](adr/0019-vectors-768-no-padding.md)) |
 | 6 | Dense-only search; BM25 and nomic each find answers the other misses | **Evaluated, not built** (2026-11-14, [ADR-0027](adr/0027-hybrid-retrieval-not-adopted.md)): failed the pre-agreed rule at k=5 and on the v3 hold-out; revisit only with a pre-specified variant on fresh questions |
-| 7 | Fixed-size chunking, no file path or title in the chunk | Not decided, after the golden questions |
+| 7 | Fixed-size chunking, no file path or title in the chunk | **Evaluated, not changed** (2026-11-14, [ADR-0028](adr/0028-chunking-variants-not-adopted.md)): a header and/or content-aware cuts put the right chunk first more often (MRR 0.48 to 0.55-0.58) but did not meet the +5 points of recall; revisit only with a rule aimed at top-1/MRR on fresh questions |
 | 8 | "Tokens" were really words | **Fixed** by renaming; chunks identical ([ADR-0015](adr/0015-words-not-tokens.md)). Real-token sizing belongs with #7 |
 | 9 | Emailed temporary passwords, no forced change | **Fixed 2026-10-28** ([ADR-0026](adr/0026-password-lifecycle.md)): forced change, 72-hour expiry, change-password, Admin reissue, a change signs out every other session |
 | 10 | Several DB lookups on every authenticated request | **Accepted**, optimise only after measuring ([ADR-0013](adr/0013-accept-three-auth-lookups.md)) |
@@ -68,8 +70,8 @@ Golden set v2 (`eval/golden_set.json`): **35 questions, 28 answerable and 7 not*
 1. Replace your live docs with the v3.0 copies delivered 2026-10-28 (`GuardRail_RAG.md`, `GuardRail_RAG_Analysis.md`, `GuardRail_RAG_Design.md`; they remove `/query` with generation, `POST /auth/refresh`, the 4,000-token budget and the 1536-wide vectors) and paste in the corrected project prompt. Delete the stale `HF_*` lines from your local `.env`.
 2. Set a real `POSTGRES_PASSWORD` in `.env` (and `DATABASE_URL` to match).
 3. Hand-judge P4, P5 and P8 (v2 misses): if the top chunk is a valid answer that the anchor text does not recognise, the key needs fixing and the v2 numbers shift.
-4. Commit the new eval files and results (`eval/golden_set_v3.json`, `eval/decide.py`, `eval/rescore.py`, `eval/results/*20261114*.json`, ADR-0027).
-5. Next: Phase 6 (hardening). Batch D (hybrid retrieval) is closed with a "not built" result; Batch C is done.
+4. Commit the new eval files and results (`eval/golden_set_v3.json`, `eval/decide.py`, `eval/rescore.py`, `eval/chunkers.py`, `eval/decide_chunking.py`, `eval/round5_plan.md`, `eval/results/*20261114*.json`, ADR-0027 and ADR-0028).
+5. Next: Phase 6 (hardening). Batch D (hybrid retrieval, then chunking: Rounds 1-5) is closed with "not built" and "not changed" results; Batch C is done.
 
 ## Not yet verified anywhere
 
@@ -80,7 +82,7 @@ embedder memory *during a large ingest* (only idle memory was measured); the pro
 ```bash
 docker compose up --build -d && docker compose exec api alembic upgrade head
 docker compose exec api python -m scripts.seed
-docker compose exec api pytest -q                              # expect 391 passed, 5 skipped (3 compose/Dockerfile tests + the 2 eval test files; eval/ is not in the image)
+docker compose exec api pytest -q                              # expect 391 passed, 7 skipped (3 compose/Dockerfile tests + the 4 eval test files; eval/ is not in the image)
 docker compose exec api python -m scripts.smoke_real_model     # real model, real HTTP routes, all roles: 30 checks
 python -m scripts.demo_retrieve                                # 30-second demo from your own machine (needs httpx)
 docker compose exec api test -f /app/.env && echo LEAK || echo env-absent

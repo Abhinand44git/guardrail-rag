@@ -17,5 +17,7 @@ Whether to size chunks by real model tokens is not decided here. It belongs with
 - **Docs still to correct (your copies, not the frozen eval snapshot):** `GuardRail_RAG_Analysis.md` line 99 and `GuardRail_RAG_Design.md` line 13 describe a 4,000-token context budget per `/query`. If ADR-0002 (retrieval-only) is accepted, the caller owns its context budget and those lines should be removed; until then, mark them "planned, not implemented, and counted in words, not tokens".
 - Do not edit `eval/corpus/`: it is a frozen snapshot, and changing it would invalidate saved results.
 
+- Content-aware boundaries and chunk headers were later evaluated and not adopted: [ADR-0028](0028-chunking-variants-not-adopted.md).
+
 ## How this is checked
 `tests/test_ingest_endpoints.py` asserts the stored label; the comparison against the previous chunker was run once as a one-off check (not kept as a test, since it needs the old code).
